@@ -1,10 +1,21 @@
-/* OpenCode aesthetic for v4ld1.
-   Colours resolve from the active registered theme via $vars. */
+/* v4ld1 — OpenCode-inspired TUI design v2.
+   Design principles:
+   - One border between edge and content (no nested borders).
+   - Consistent 1-cell margin on every panel edge; 1 2 inner padding everywhere.
+   - Focus signal = border color only (no background shift on active tab).
+   - CSS transitions on every interactive state change for smooth animation.
+   - Breathing room: blank rows and margin-top: 1 separate logical groups.
+*/
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
 
 Screen {
     background: $background;
     color: $foreground;
+    layout: vertical;
 }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
 
 Header {
     background: $panel;
@@ -14,51 +25,68 @@ Header {
     dock: top;
 }
 
+/* ── Status bar (just below header) ─────────────────────────────────────── */
+
 #status {
     height: 1;
-    padding: 0 1;
+    padding: 0 2;
     background: $surface;
     color: $text-muted;
     border-bottom: solid $border-blurred;
+    transition: color 300ms linear;
 }
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
 
 Tabs {
     background: $surface;
     height: 2;
+    padding: 0 1;
     border-bottom: solid $border;
 }
 
 Tab {
     color: $text-muted;
     padding: 0 2;
+    background: transparent;
+    transition: color 200ms linear;
 }
 
 Tab:hover {
     color: $foreground;
-    background: $panel;
+    background: transparent;
 }
 
 Tab.-active {
     color: $primary;
     text-style: bold;
-    background: $panel;
+    background: transparent;
     border-bottom: solid $primary;
 }
 
+/* ── Tabbed content fills the remainder ──────────────────────────────────── */
+
 TabbedContent {
     height: 1fr;
+    padding: 0;
 }
 
 TabbedContent ContentSwitcher {
     background: $background;
     height: 1fr;
+    padding: 0;
 }
+
+/* ── Dashboard top row ───────────────────────────────────────────────────── */
 
 #dashboard-top {
     height: auto;
-    max-height: 12;
-    margin-bottom: 1;
+    max-height: 14;
+    margin: 1 1 1 1;
+    padding: 0;
 }
+
+/* ── Generic panel card ──────────────────────────────────────────────────── */
 
 .panel {
     border: round $border;
@@ -67,49 +95,73 @@ TabbedContent ContentSwitcher {
     height: auto;
     width: 1fr;
     margin: 0 1 0 0;
+    transition: border-color 250ms linear;
+}
+
+.panel:last-of-type {
+    margin-right: 0;
 }
 
 .panel:focus-within {
     border: round $primary;
 }
 
+/* Panel section header — unified across all tabs */
 .panel-title {
     color: $accent;
     text-style: bold;
     margin-bottom: 1;
 }
 
+/* ── Main stream (chat log) ──────────────────────────────────────────────── */
+
 #stream {
     height: 1fr;
-    min-height: 10;
+    min-height: 8;
     border: round $border;
     background: $surface;
     padding: 1 2;
-    margin: 0 1 1 0;
+    margin: 0 1 1 1;
     scrollbar-background: $panel;
-    scrollbar-color: $primary 60%;
-    scrollbar-color-hover: $primary;
+    scrollbar-color: $primary 50%;
+    transition: border-color 250ms linear;
 }
 
 #stream:focus {
     border: round $primary;
 }
 
+/* ── Routing tab ─────────────────────────────────────────────────────────── */
+
 #routing-panel {
     border: round $border;
     background: $surface;
     padding: 1 2;
-    margin: 1 1 1 0;
+    margin: 1 1 1 1;
     height: 1fr;
+    transition: border-color 250ms linear;
 }
+
+#routing-panel:focus-within {
+    border: round $primary;
+}
+
+/* ── Agents tab ──────────────────────────────────────────────────────────── */
 
 #agents-panel {
     border: round $border;
     background: $surface;
     padding: 1 2;
-    margin: 1 1 1 0;
+    margin: 1 1 1 1;
     height: 1fr;
+    transition: border-color 250ms linear;
 }
+
+#agents-panel:focus-within {
+    border: round $primary;
+}
+
+/* ── Logs tab ────────────────────────────────────────────────────────────── */
 
 #logview {
     height: 1fr;
@@ -117,17 +169,25 @@ TabbedContent ContentSwitcher {
     background: $surface;
     color: $text-muted;
     padding: 1 2;
-    margin: 1 1 1 0;
+    margin: 1 1 1 1;
+    transition: border-color 250ms linear;
 }
+
+#logview:focus {
+    border: round $primary;
+}
+
+/* ── Prompt input (docked bottom) ────────────────────────────────────────── */
 
 #prompt {
     dock: bottom;
     border: round $border;
     background: $surface;
     color: $foreground;
-    padding: 0 1;
-    margin: 0 0 0 0;
+    padding: 0 2;
+    margin: 0 1 1 1;
     height: 3;
+    transition: border-color 200ms linear, background 200ms linear;
 }
 
 #prompt:focus {
@@ -140,6 +200,8 @@ TabbedContent ContentSwitcher {
     color: $text-disabled;
     background: $surface;
 }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
 
 Footer {
     background: $panel;

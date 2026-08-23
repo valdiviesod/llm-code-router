@@ -53,7 +53,7 @@ def test_routing_panel_renders_conservation_banner():
         estimated_usage=UsageEstimate(10, 5), risk=Risk.LOW, mode=RoutingMode.AUTO,
         conservation=True,
     )
-    assert "QUOTA CONSERVATION MODE" in panel.render().plain
+    assert "quota conservation mode" in panel.render().plain.lower()
 
 
 def test_usage_panel_labels_estimated_data():

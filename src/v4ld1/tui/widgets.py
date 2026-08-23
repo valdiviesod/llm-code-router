@@ -42,6 +42,15 @@ def _status_style(status: str) -> str:
     return {"confirmed": p.ok, "estimated": p.warn}.get(status.lower(), p.muted)
 
 
+def _section_header(title: str) -> Text:
+    """Unified section header used across all panels: dim rule + bold label."""
+    p = palette()
+    t = Text()
+    t.append(f"{title}", style=f"bold {p.accent}")
+    t.append(f"  {'─' * max(0, 40 - len(title))}", style=p.muted)
+    return t
+
+
 class UsagePanel(Static):
     """One row per agent per window, with an explicit ESTIMATED/CONFIRMED tag."""
 
@@ -79,25 +88,36 @@ class RoutingPanel(Static):
         if d is None:
             return Text("No routing decision yet.", style=f"italic {p.muted}")
         text = Text()
-        text.append("▸ DELEGATION: ", style=f"bold {p.muted}")
+
+        # Header — same style pattern as other panels
+        text.append_text(_section_header("Routing decision"))
+        text.append("\n\n")
+
+        # Selected agent — primary data, most prominent
+        text.append("agent       ", style=p.muted)
         text.append(f"{d.selected_agent}", style=f"bold {p.ok}")
         if d.selected_model:
-            text.append(f"  [{d.selected_model}]", style=p.accent)
-        text.append("\n\n")
+            text.append(f"  {d.selected_model}", style=p.accent)
+        text.append("\n")
+
         text.append("mode        ", style=p.muted)
-        text.append(f"[{d.mode.value.upper()}]\n", style=f"bold {p.alt}")
+        text.append(f"{d.mode.value}\n", style=f"bold {p.alt}")
         text.append("confidence  ", style=p.muted)
         text.append(f"{d.confidence:.0%}\n", style=f"bold {p.info}")
         text.append("risk        ", style=p.muted)
         text.append(f"{d.risk.value}\n", style=f"bold {p.warn}")
-        text.append("estimate    ", style=p.muted)
-        text.append(f"~{d.estimated_usage.total_tokens:,} tokens\n", style=p.info)
+        text.append("tokens est  ", style=p.muted)
+        text.append(f"~{d.estimated_usage.total_tokens:,}\n", style=p.info)
         text.append("reason      ", style=p.muted)
         text.append(f"{d.reason}\n")
+
         if d.conservation:
-            text.append("\nQUOTA CONSERVATION MODE\n", style=f"bold {p.danger}")
+            text.append("\n  quota conservation mode\n", style=f"bold {p.danger}")
+
         if d.alternatives:
-            text.append("\npassed over\n", style=f"bold {p.muted}")
+            text.append("\n")
+            text.append_text(_section_header("Considered"))
+            text.append("\n\n")
             for alt in d.alternatives:
                 text.append(f"  {alt.agent_id:<14}", style=p.muted)
                 text.append(f"{alt.score:.2f}\n", style=p.alt)
@@ -117,14 +137,14 @@ class MetricsPanel(Static):
         table.add_column(justify="right", style=f"bold {p.info}")
         runs = m.get("runs", 0)
         ok = m.get("successes", 0)
-        table.add_row("⚡ Runs", str(runs))
-        table.add_row("🎯 Success rate", f"{ok / runs:.0%}" if runs else "n/a")
-        table.add_row("⏱ Avg duration", f"{m.get('avg_duration_s', 0):.1f}s")
-        table.add_row("🔥 Tokens spent", f"{m.get('total_tokens', 0):,}")
+        table.add_row("Runs", str(runs))
+        table.add_row("Success rate", f"{ok / runs:.0%}" if runs else "n/a")
+        table.add_row("Avg duration", f"{m.get('avg_duration_s', 0):.1f}s")
+        table.add_row("Tokens spent", f"{m.get('total_tokens', 0):,}")
         # The headline metric: successful work per million tokens burned.
         tokens = m.get("total_tokens", 0)
         efficiency = f"{ok / (tokens / 1_000_000):.1f}" if tokens else "n/a"
-        table.add_row("✨ Successes / Mtok", efficiency)
+        table.add_row("Success / Mtok", efficiency)
         for state, count in sorted(m.get("tasks_by_state", {}).items()):
             table.add_row(f"  tasks:{state}", str(count))
         return table
@@ -158,7 +178,7 @@ class AgentsPanel(Static):
             table.add_row(
                 dot,
                 row.display_name,
-                f"[{row.agent_id}]",
+                row.agent_id,
                 Text(row.detail, style="" if row.healthy else p.danger),
             )
         return table

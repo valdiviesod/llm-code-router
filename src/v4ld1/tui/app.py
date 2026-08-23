@@ -26,7 +26,10 @@ from .widgets import AgentRow, AgentsPanel, MetricsPanel, RoutingPanel, UsagePan
 REFRESH_SECONDS = 30.0
 # A run can legitimately take many minutes (agents.timeout_s defaults to 1800),
 # so the status line has to tick or the app is indistinguishable from hung.
-TICK_SECONDS = 1.0
+TICK_SECONDS = 0.12
+
+# Braille spinner — 8 frames at ~120 ms each ≈ smooth 8 fps rotation.
+_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
 
 def _detach_console_logging() -> list[logging.Handler]:
@@ -96,6 +99,7 @@ class V4ld1App(App):
         self.busy = False
         self._worker: Worker | None = None
         self._started_at = 0.0
+        self._tick_index = 0
         self._detached_handlers: list[logging.Handler] = []
         # Agent output kept verbatim: the log renders it styled and wrapped, so
         # it is not a source you can copy an exact diff or command back out of.
@@ -147,25 +151,29 @@ class V4ld1App(App):
 
     def _tick(self) -> None:
         if self.busy:
+            self._tick_index = (self._tick_index + 1) % len(_SPINNER)
             self._render_status()
 
     def _render_status(self) -> None:
         p = palette()
         mode = self.mode_override.value if self.mode_override else "auto"
         branch = _git_branch(self.project_root)
-        branch_str = f" [{p.muted}]│[/] [{p.info}] {branch}[/]" if branch else ""
+        branch_str = f"  [{p.muted}]on[/] [{p.info}]{branch}[/]" if branch else ""
         if self.busy:
             elapsed = int(time.monotonic() - self._started_at)
-            state = f"[bold {p.warn}]● running {elapsed // 60}m{elapsed % 60:02d}s[/]"
-            hint = f"   [{p.muted}](esc/ctrl+c to cancel)[/]"
+            spin = _SPINNER[self._tick_index]
+            state = (
+                f"[bold {p.warn}]{spin} running "
+                f"{elapsed // 60}m{elapsed % 60:02d}s[/]  "
+                f"[{p.muted}]esc to cancel[/]"
+            )
         else:
             state = f"[bold {p.ok}]● idle[/]"
-            hint = ""
         self.query_one("#status", Static).update(
-            f"[{p.accent}]⚡[/] [bold {p.info}]v4ld1[/] [{p.muted}]code-router[/]  "
-            f"[{p.muted}]mode[/] [bold {p.alt}][{mode.upper()}][/]   "
-            f"[{p.muted}]state[/] {state}   "
-            f"[{p.muted}]project[/] [{p.info}]{self.project_root.name}[/]{branch_str}{hint}"
+            f"[bold {p.info}]v4ld1[/]  "
+            f"[{p.muted}]mode[/] [{p.alt}]{mode}[/]  "
+            f"[{p.muted}]project[/] [{p.info}]{self.project_root.name}[/]{branch_str}  "
+            f"{state}"
         )
 
     def _set_busy(self, busy: bool) -> None:
@@ -276,11 +284,8 @@ class V4ld1App(App):
         event.input.value = ""
         p = palette()
         self.query_one("#stream", RichLog).write(
-            f"\n[bold {p.accent}]╭─ User "
-            f"────────────────────────────────────────────────────────────[/]\n"
-            f"[bold {p.accent}]│[/] [bold {p.info}]❯[/] {prompt}\n"
-            f"[bold {p.accent}]╰"
-            f"────────────────────────────────────────────────────────────────────[/]"
+            f"\n[{p.muted}]─── you ─────────────────────────────────────────[/]\n"
+            f"[bold {p.info}]❯[/] {prompt}\n"
         )
         # Busy is set here, not inside the worker: the worker may not be
         # scheduled before the user hits enter again.
