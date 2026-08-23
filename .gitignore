@@ -5,3 +5,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .worktrees/
+
+# Local agent tooling: machine-specific caches and vendored skill copies.
+.agents/
+.atl/
+.claude/skills/
+skills-lock.json

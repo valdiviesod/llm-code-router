@@ -1,26 +1,97 @@
-Screen { background: $surface; }
+/* Layout only. Colours come from the registered theme (theme.py) via $vars,
+   so retheming never means editing this file. */
 
-#banner {
-    height: 6;
-    content-align: center middle;
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+Header {
     background: $panel;
-    border: round $accent;
+    color: $primary;
+}
+
+#status {
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+    color: $text-muted;
+}
+
+Tabs {
+    background: $surface;
+}
+
+Tab {
+    color: $text-muted;
+}
+
+Tab.-active {
     color: $accent;
     text-style: bold;
 }
 
-.panel {
-    border: round $primary 30%;
-    padding: 1 2;
+TabbedContent ContentSwitcher {
+    background: $background;
+}
+
+#dashboard-top {
     height: auto;
 }
 
-.panel-title { text-style: bold; color: $accent; }
+.panel {
+    border: round $border;
+    background: $surface;
+    padding: 1 2;
+    height: auto;
+    width: 1fr;
+    margin: 0 1 1 0;
+}
 
-#prompt { dock: bottom; border: round $accent; }
+.panel:focus-within {
+    border: round $primary;
+}
 
-#stream { height: 1fr; border: round $primary 30%; padding: 0 1; margin-bottom: 1; }
+.panel-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
 
-.metric { color: $text-muted; }
-.good { color: $success; }
-.bad { color: $error; }
+#stream {
+    height: 1fr;
+    min-height: 8;
+    border: round $border;
+    background: $surface;
+    padding: 0 1;
+    margin: 0 1 1 0;
+    scrollbar-background: $panel;
+    scrollbar-color: $primary 60%;
+}
+
+#logview {
+    height: 1fr;
+    border: round $border;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+#prompt {
+    dock: bottom;
+    border: round $border;
+    background: $surface;
+}
+
+#prompt:focus {
+    border: round $accent;
+}
+
+#prompt:disabled {
+    border: round $border-blurred;
+    color: $text-disabled;
+}
+
+Footer {
+    background: $panel;
+}
