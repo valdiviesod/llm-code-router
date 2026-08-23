@@ -109,8 +109,8 @@ Read the full architecture breakdown in [ARCHITECTURE.md](ARCHITECTURE.md) and [
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/valdiviesod/vald1-code-router.git
-cd vald1-code-router
+git clone https://github.com/valdiviesod/v4ld1s-code-router.git
+cd v4ld1s-code-router
 
 # 2. Set up virtual environment and install
 python3 -m venv .venv
