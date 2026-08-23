@@ -1,0 +1,26 @@
+Screen { background: $surface; }
+
+#banner {
+    height: 6;
+    content-align: center middle;
+    background: $panel;
+    border: round $accent;
+    color: $accent;
+    text-style: bold;
+}
+
+.panel {
+    border: round $primary 30%;
+    padding: 1 2;
+    height: auto;
+}
+
+.panel-title { text-style: bold; color: $accent; }
+
+#prompt { dock: bottom; border: round $accent; }
+
+#stream { height: 1fr; border: round $primary 30%; padding: 0 1; margin-bottom: 1; }
+
+.metric { color: $text-muted; }
+.good { color: $success; }
+.bad { color: $error; }

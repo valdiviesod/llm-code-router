@@ -1,0 +1,35 @@
+[project]
+name = "v4ld1"
+version = "0.1.0"
+description = "v4ld1 Code TUI - AI coding orchestrator"
+requires-python = ">=3.11"
+dependencies = ["textual>=0.80", "pyyaml>=6", "rich>=13"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+v4ld1 = "v4ld1.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["provider: hits a real provider CLI, excluded by default"]
+addopts = "-m 'not provider'"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["UP042"]  # str+Enum is deliberate: values serialise directly to SQLite/JSON
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["SIM117", "F841", "E501"]
