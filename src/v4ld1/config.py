@@ -31,6 +31,10 @@ class AgentConfig:
     enabled: bool = True
     command: str = ""
     default_model: str | None = None
+    # Model per task complexity, e.g. {"trivial": "haiku", "critical": "opus"}.
+    # Keys are Complexity values; missing keys fall back to default_model, and
+    # an empty mapping defers to the CLI's own default.
+    model_tiers: dict[str, str] = field(default_factory=dict)
     # Limits are per-plan and change over time: never hardcoded, only configured.
     # None means "unknown" and forces UsageStatus.UNKNOWN for that window.
     window_hours: float = 5.0

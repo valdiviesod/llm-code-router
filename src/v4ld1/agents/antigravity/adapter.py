@@ -7,6 +7,7 @@ Code, it exposes no quota endpoint, so usage is derived from run accounting.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -71,12 +72,19 @@ class AntigravityAdapter(AgentAdapter):
         binary = self.binary_available()
         if not binary:
             return []
-        try:
-            code, out, _ = await self._run([binary, "models"], timeout=60)
-        except Exception:  # noqa: BLE001
-            return []
-        if code != 0:
-            return []
+        # `agy models` hits the network and occasionally returns empty on a
+        # transient blip. One retry keeps a network hiccup from being reported
+        # to the user as an authentication problem.
+        out = ""
+        for attempt in range(2):
+            try:
+                code, out, _ = await self._run([binary, "models"], timeout=60)
+            except Exception:  # noqa: BLE001
+                return []
+            if code == 0 and "\t" in out:
+                break
+            if attempt == 0:
+                await asyncio.sleep(1)
         models: list[ModelInfo] = []
         for line in out.splitlines():
             if "\t" not in line:

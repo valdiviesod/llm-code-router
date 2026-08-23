@@ -73,3 +73,46 @@ async def test_decision_is_persisted(orchestrator, db):
     await orchestrator.run_task(Task(prompt="do it"))
     row = db.conn.execute("SELECT COUNT(*) AS n FROM routing_decisions").fetchone()
     assert row["n"] >= 1
+
+
+def _with_tiers(orchestrator, model_selection=True):
+    orchestrator.config.agents["fake"].model_tiers = {
+        "trivial": "cheap", "low": "cheap", "medium": "mid",
+        "high": "top", "critical": "top",
+    }
+    adapter = orchestrator.registry.get("fake")
+    if model_selection:
+        adapter._caps = adapter._caps | {Capability.MODEL_SELECTION}
+    return adapter
+
+
+@pytest.mark.parametrize("complexity,expected", [
+    (Complexity.TRIVIAL, "cheap"),
+    (Complexity.MEDIUM, "mid"),
+    (Complexity.CRITICAL, "top"),
+])
+def test_model_tier_follows_complexity(orchestrator, complexity, expected):
+    adapter = _with_tiers(orchestrator)
+    task = Task(prompt="x", complexity=complexity)
+    assert orchestrator.router._model_for(adapter, task, RoutingMode.BALANCED) == expected
+
+
+def test_quality_mode_always_takes_the_top_tier(orchestrator):
+    adapter = _with_tiers(orchestrator)
+    task = Task(prompt="x", complexity=Complexity.TRIVIAL)
+    assert orchestrator.router._model_for(adapter, task, RoutingMode.QUALITY) == "top"
+
+
+def test_no_tiers_falls_back_to_default_model(orchestrator):
+    orchestrator.config.agents["fake"].default_model = "fallback"
+    adapter = orchestrator.registry.get("fake")
+    assert orchestrator.router._model_for(
+        adapter, Task(prompt="x"), RoutingMode.BALANCED) == "fallback"
+
+
+def test_tiers_ignored_without_model_selection_capability(orchestrator):
+    adapter = _with_tiers(orchestrator, model_selection=False)
+    orchestrator.config.agents["fake"].default_model = "fallback"
+    # FakeAdapter declares only CODE_EDIT and SHELL, so it cannot pick models.
+    assert orchestrator.router._model_for(
+        adapter, Task(prompt="x"), RoutingMode.BALANCED) == "fallback"

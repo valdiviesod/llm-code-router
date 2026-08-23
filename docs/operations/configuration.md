@@ -11,6 +11,12 @@ agents:
     enabled: true
     command: claude
     default_model: null       # null defers to the CLI's own default
+    model_tiers:              # cheapest model that matches the task
+      trivial: haiku
+      low: haiku
+      medium: sonnet
+      high: opus
+      critical: opus
     window_hours: 5
     window_limit_tokens: null # your plan's limit; null means UNKNOWN
     weekly_limit_tokens: null
@@ -52,6 +58,17 @@ log_level: INFO
 are not shipped as defaults because they are plan-specific and they change. Leave
 them `null` and usage is reported as UNKNOWN; set them and it becomes ESTIMATED,
 which is what enables forecasting, reserves and conservation mode.
+
+## Model tiers
+
+The single biggest lever for making a premium quota last. Keys are complexity
+levels; values are model ids your CLI accepts (`claude --help` lists its aliases,
+`agy models` lists real ids). QUALITY and MAXIMUM modes ignore the downgrade and
+always take the top tier. Omit the block to let the CLI choose.
+
+Asymmetric reserves pair well with this: give the premium agent a larger
+`reserve_percent` so it stays available for the work that actually needs it,
+and a smaller one to the agent meant to absorb bulk implementation.
 
 ## Reserves
 

@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Complexity-based model tiering (`agents.<id>.model_tiers`): the router now
+  picks the cheapest model that still matches the task, instead of one fixed
+  model per agent. QUALITY and MAXIMUM always take the top tier. Measured: the
+  same trivial task cost $0.48 on opus and $0.045 on haiku.
+
+### Fixed
+- `agy models` is a network call that can return empty transiently; the adapter
+  now retries once, and `v4ld1 doctor` no longer reports a network blip as an
+  authentication failure.
+
 ## [0.1.0] — 2026-08-22
 
 ### Added

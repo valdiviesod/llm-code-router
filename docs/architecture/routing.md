@@ -36,6 +36,33 @@ Weights per mode (each column sums to 1.0):
 `AUTO` is not a weight set: it resolves to ECONOMY, BALANCED or QUALITY based on
 the task's own complexity.
 
+## Model tiering
+
+Choosing the agent is only half the decision. Without tiering every run costs
+top-tier rates, trivial ones included, which is the fastest way to burn a premium
+quota on work that never needed it.
+
+`agents.<id>.model_tiers` maps a complexity level to a model id:
+
+```yaml
+model_tiers:
+  trivial: haiku
+  medium: sonnet
+  critical: opus
+```
+
+`RoutingEngine._model_for()` then picks the cheapest model that still matches the
+task. Rules:
+
+- QUALITY and MAXIMUM skip the downgrade and always take the highest tier.
+- An agent that does not declare `Capability.MODEL_SELECTION` is left on
+  `default_model`.
+- A missing tier key falls back to `default_model`; no tiers at all defers to the
+  CLI's own default rather than guessing an id that may not exist for the account.
+
+Measured on this machine: the same trivial task cost $0.48 on opus and $0.045 on
+haiku.
+
 ## Vetoes and overrides
 
 - A candidate whose forecast breaches the safe threshold or the reserve scores

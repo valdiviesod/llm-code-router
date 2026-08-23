@@ -138,3 +138,20 @@ def test_registry_discovers_both_shipped_adapters():
 def test_registry_honours_disabled_agents():
     cfg = Config(agents={"claude": AgentConfig(enabled=False)})
     assert "claude" not in AgentRegistry(cfg).ids
+
+
+async def test_antigravity_models_retry_on_transient_empty(monkeypatch):
+    """A single empty response must not be reported as zero models."""
+    adapter = AntigravityAdapter(AgentConfig())
+    monkeypatch.setattr(adapter, "binary_available", lambda: "/bin/agy")
+    responses = [(0, "", ""), (0, "m1\tModel One\n", "")]
+    calls = []
+
+    async def fake_run(argv, **kw):
+        calls.append(argv)
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(adapter, "_run", fake_run)
+    models = await adapter.get_models()
+    assert len(calls) == 2, "should retry once"
+    assert [m.id for m in models] == ["m1"]

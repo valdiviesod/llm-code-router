@@ -174,9 +174,22 @@ class RoutingEngine:
         )
 
     def _model_for(self, adapter: AgentAdapter, task: Task, mode: RoutingMode) -> str | None:
-        configured = self.config.agent(adapter.id).default_model
-        if configured:
-            return configured
-        # Without a configured model, defer to the CLI's own default rather than
-        # guessing a model id that may not exist for this account.
-        return None
+        """Pick the cheapest model that still matches the task's complexity.
+
+        This is the main lever for making a premium quota last: without it every
+        run costs top-tier rates, including the trivial ones. QUALITY and MAXIMUM
+        skip the downgrade and always take the highest configured tier.
+        """
+        cfg = self.config.agent(adapter.id)
+        tiers = cfg.model_tiers
+        if not tiers:
+            # No tiers configured: defer to the CLI's own default rather than
+            # guessing a model id that may not exist for this account.
+            return cfg.default_model
+        if not adapter.capabilities.has(Capability.MODEL_SELECTION):
+            return cfg.default_model
+        if mode in (RoutingMode.QUALITY, RoutingMode.MAXIMUM):
+            ordered = [c for c in Complexity if c.value in tiers]
+            if ordered:
+                return tiers[ordered[-1].value]
+        return tiers.get(task.complexity.value, cfg.default_model)

@@ -40,9 +40,12 @@ async def run_doctor(config: Config, project_root: Path) -> list[Finding]:
             health.remediation,
         ))
         models = await adapter.get_models()
-        findings.append(Finding(f"{adapter.display_name} models", bool(models),
-                                f"{len(models)} available",
-                                "Authenticate the CLI, then re-run doctor"))
+        findings.append(Finding(
+            f"{adapter.display_name} models", bool(models),
+            f"{len(models)} available",
+            f"`{adapter.command}` returned no models. Check authentication, or "
+            "retry — this call hits the network and can fail transiently.",
+        ))
 
     findings.append(Finding("Configuration", DEFAULT_CONFIG_PATH.exists(),
                             str(DEFAULT_CONFIG_PATH),
