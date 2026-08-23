@@ -106,6 +106,15 @@ A change is not finished until all of these hold:
 - [ ] ADR written if an architectural decision was made
 - [ ] No other adapter broken
 
+## Persistent memory
+
+This repository carries `.engram/config.json` pinning the engram project to
+`v4ld1`. It is needed because this machine has many git repositories side by
+side, and without it engram cannot tell which project a memory belongs to.
+
+Save decisions, verified CLI behaviour and gotchas to the `v4ld1` project — not
+to whatever project cwd happens to resolve to.
+
 ## Commands
 
 ```bash

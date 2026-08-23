@@ -12,7 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 ### Added
 - Project harness: `CLAUDE.md` (rules and invariants), `.claude/settings.json`
   (permission allowlist), GitHub Actions CI on Python 3.11 and 3.12, a pull
-  request template carrying the invariant checklist, and `.editorconfig`.
+  request template carrying the invariant checklist, `.editorconfig`, and
+  `.engram/config.json` pinning the persistent-memory project name.
 - Complexity-based model tiering (`agents.<id>.model_tiers`): the router now
   picks the cheapest model that still matches the task, instead of one fixed
   model per agent. QUALITY and MAXIMUM always take the top tier. Measured: the

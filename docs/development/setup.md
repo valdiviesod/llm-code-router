@@ -35,6 +35,7 @@ src/v4ld1/
 | `.github/workflows/ci.yml` | Lint, type check and test on Python 3.11 and 3.12, plus a check that the `router` command installs. |
 | `.github/pull_request_template.md` | The invariant checklist and definition of done. |
 | `.editorconfig` | Indentation and line endings. |
+| `.engram/config.json` | Pins the engram memory project to `v4ld1`, so memories are not filed under whichever sibling repository cwd resolves to. |
 
 CI deliberately never runs `-m provider`: it has no agent CLIs, and a pipeline
 that depends on someone's quota to go green is not a pipeline.
