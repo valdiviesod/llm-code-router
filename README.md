@@ -1,4 +1,4 @@
-# v4ld1 Code TUI
+# v4ld1 Code Router
 
 An AI coding orchestrator for Linux. It sits between you and your coding agents,
 decides which one should do the work, splits the work when that helps, validates
@@ -8,7 +8,7 @@ Today it drives **Claude Code** and the **Antigravity CLI**. Adding a third agen
 means writing one adapter — no changes to the router, scheduler, TUI or database.
 
 ```
-$ v4ld1 "implement JWT authentication"
+$ router "implement JWT authentication"
 
 complexity=high risk=medium type=security context_files=7
 decomposed into 4 subtasks
@@ -22,8 +22,8 @@ decomposed into 4 subtasks
 ```bash
 git clone <repo> && cd v4ld1
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/v4ld1 config --init
-.venv/bin/v4ld1 doctor
+.venv/bin/router config --init
+.venv/bin/router doctor
 ```
 
 `doctor` tells you exactly what is missing and how to fix it. It never guesses.
@@ -31,15 +31,15 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ## Use
 
 ```bash
-v4ld1                       # open the TUI
-v4ld1 "fix the login bug"   # run one task
-v4ld1 --mode economy "..."  # force a routing mode
-v4ld1 --agent claude "..."  # force an agent
-v4ld1 status                # metrics
-v4ld1 agents                # health and capabilities
-v4ld1 usage                 # usage windows
-v4ld1 doctor                # diagnostics
-v4ld1 config --init         # write a default config
+router                        # open the TUI
+router "fix the login bug"    # run one task
+router --mode economy "..."   # force a routing mode
+router --agent claude "..."   # force an agent
+router status                 # metrics
+router agents                 # health and capabilities
+router usage                  # usage windows
+router doctor                 # diagnostics
+router config --init          # write a default config
 ```
 
 ## The point

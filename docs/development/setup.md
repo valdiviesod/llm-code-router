@@ -4,7 +4,7 @@
 git clone <repo> && cd v4ld1
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/v4ld1 doctor
+.venv/bin/router doctor
 ```
 
 Requires Python 3.11+ and git. Claude Code and/or the Antigravity CLI are needed

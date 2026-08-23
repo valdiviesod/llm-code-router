@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `v4ld1 doctor`. It checks Python, git, adapter registration, each
+Start with `router doctor`. It checks Python, git, adapter registration, each
 CLI's health and model list, the config file, the database, the project, and
 whether usage limits are configured — and prints a fix for anything failing.
 

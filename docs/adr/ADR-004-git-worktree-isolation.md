@@ -20,7 +20,7 @@ isolation disabled.
 
 - Each agent's work is a real branch: diffable, reviewable, mergeable, discardable.
 - Cheap — worktrees share the object database.
-- Only works in a git repository. `v4ld1 doctor` says so plainly rather than
+- Only works in a git repository. `router doctor` says so plainly rather than
   pretending isolation is active.
 - Orphaned worktrees are possible after a hard kill; `git worktree prune` cleans
   up, and troubleshooting documents it.

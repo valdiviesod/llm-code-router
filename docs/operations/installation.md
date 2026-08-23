@@ -15,17 +15,17 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-Put `v4ld1` on your PATH:
+Put `router` on your PATH:
 
 ```bash
-ln -s "$PWD/.venv/bin/v4ld1" ~/.local/bin/v4ld1
+ln -s "$PWD/.venv/bin/router" ~/.local/bin/router
 ```
 
 ## First run
 
 ```bash
-v4ld1 config --init   # writes ~/.config/v4ld1/config.yaml
-v4ld1 doctor          # verifies everything and explains what is missing
+router config --init   # writes ~/.config/v4ld1/config.yaml
+router doctor          # verifies everything and explains what is missing
 ```
 
 `doctor` exits non-zero if anything needs attention, so it works in CI too.
@@ -34,12 +34,12 @@ v4ld1 doctor          # verifies everything and explains what is missing
 
 ```bash
 cd your-project
-v4ld1 "explain what this project does, change no files"
+router "explain what this project does, change no files"
 ```
 
 ## Uninstall
 
 ```bash
-rm ~/.local/bin/v4ld1
+rm ~/.local/bin/router
 rm -rf ~/.config/v4ld1 ~/.local/share/v4ld1   # config, database, logs
 ```

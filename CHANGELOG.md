@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- The console command is now `router` (was `v4ld1`). The Python package, config
+  path and data directory keep the `v4ld1` name; only the entry point changed.
+
 ### Added
 - Complexity-based model tiering (`agents.<id>.model_tiers`): the router now
   picks the cheapest model that still matches the task, instead of one fixed
@@ -13,7 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
 ### Fixed
 - `agy models` is a network call that can return empty transiently; the adapter
-  now retries once, and `v4ld1 doctor` no longer reports a network blip as an
+  now retries once, and `router doctor` no longer reports a network blip as an
   authentication failure.
 
 ## [0.1.0] — 2026-08-22

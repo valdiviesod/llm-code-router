@@ -140,7 +140,7 @@ async def cmd_tui(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Subcommand parser. A free-text prompt is handled by run_parser instead,
     because argparse cannot disambiguate a positional from a subcommand."""
-    parser = argparse.ArgumentParser("v4ld1", description="AI coding orchestrator")
+    parser = argparse.ArgumentParser("router", description="AI coding orchestrator")
     parser.add_argument("--config", help="path to config.yaml")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("doctor", help="check the installation")
@@ -153,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("v4ld1", description="run a task")
+    parser = argparse.ArgumentParser("router", description="run a task")
     parser.add_argument("--config", help="path to config.yaml")
     parser.add_argument("--mode", choices=[m.value for m in RoutingMode],
                         help="override the routing mode for this run")

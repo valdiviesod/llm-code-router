@@ -54,7 +54,7 @@ Prefer asking the CLI over hardcoding a list that will go stale.
 ## 5. Health check
 
 Must never raise, and must return a `remediation` string when unhealthy —
-`v4ld1 doctor` prints it verbatim to the user.
+`router doctor` prints it verbatim to the user.
 
 ```python
 async def health_check(self) -> HealthStatus:

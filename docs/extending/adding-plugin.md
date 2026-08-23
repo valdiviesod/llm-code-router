@@ -11,7 +11,7 @@ my-agent = "my_package.adapter:MyAdapter"
 
 `AgentRegistry` loads the `v4ld1.agents` group at startup, after importing the
 built-in adapters. Plugin loading is best-effort: a broken plugin is skipped
-rather than taking down the orchestrator, so check `v4ld1 agents` to confirm
+rather than taking down the orchestrator, so check `router agents` to confirm
 yours was picked up.
 
 Your adapter must satisfy the same contract as a built-in one — copy

@@ -35,5 +35,5 @@ Plan limits also differ per user and change over time, so hardcoding
   Claude Code or agy is invisible. This is documented, and it is why the default
   is UNKNOWN rather than a confident-looking zero.
 - Forecasting, reserves and conservation mode all require the user to set limits.
-  `v4ld1 doctor` flags unset limits as an actionable finding rather than a silent
+  `router doctor` flags unset limits as an actionable finding rather than a silent
   degradation.

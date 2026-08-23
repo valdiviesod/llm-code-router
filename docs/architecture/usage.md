@@ -15,8 +15,8 @@ window, and compare against limits the user configured.
 | `ESTIMATED` | v4ld1 summed its own runs against a user-configured limit. |
 | `UNKNOWN` | No limit configured, so no fraction can be computed. |
 
-The TUI and `v4ld1 usage` always print this tag. Limits are never hardcoded —
-they are plan-specific and change. `v4ld1 doctor` warns when they are unset.
+The TUI and `router usage` always print this tag. Limits are never hardcoded —
+they are plan-specific and change. `router doctor` warns when they are unset.
 
 ## Forecasting
 
