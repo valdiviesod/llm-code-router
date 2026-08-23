@@ -1,8 +1,8 @@
 import pytest
 
-from v4ld1.config import SecurityConfig
-from v4ld1.logging import JsonFormatter
-from v4ld1.security.policy import CommandPolicy, Decision, redact_secrets
+from coderouter.config import SecurityConfig
+from coderouter.logging import JsonFormatter
+from coderouter.security.policy import CommandPolicy, Decision, redact_secrets
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def test_secrets_are_redacted():
 
 def test_log_formatter_redacts_secret_fields():
     import logging
-    record = logging.LogRecord("v4ld1", logging.INFO, __file__, 1, "msg", None, None)
+    record = logging.LogRecord("coderouter", logging.INFO, __file__, 1, "msg", None, None)
     record.fields = {"api_key": "supersecret", "agent": "claude"}
     output = JsonFormatter().format(record)
     assert "supersecret" not in output

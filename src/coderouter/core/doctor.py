@@ -23,7 +23,7 @@ class Finding:
 async def run_doctor(config: Config, project_root: Path) -> list[Finding]:
     findings: list[Finding] = [
         Finding("Python", sys.version_info >= (3, 11),
-                f"{sys.version.split()[0]}", "v4ld1 needs Python 3.11 or newer"),
+                f"{sys.version.split()[0]}", "coderouter needs Python 3.11 or newer"),
         Finding("Git", bool(shutil.which("git")),
                 shutil.which("git") or "not found", "Install git"),
     ]
@@ -49,7 +49,7 @@ async def run_doctor(config: Config, project_root: Path) -> list[Finding]:
 
     findings.append(Finding("Configuration", DEFAULT_CONFIG_PATH.exists(),
                             str(DEFAULT_CONFIG_PATH),
-                            "Run `v4ld1 config --init` to create it"))
+                            "Run `router config --init` to create it"))
     try:
         Database(config.db_path).close()
         findings.append(Finding("Database", True, str(config.db_path)))

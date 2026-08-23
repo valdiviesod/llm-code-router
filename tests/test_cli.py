@@ -1,6 +1,6 @@
 import pytest
 
-from v4ld1.cli import build_parser, main, run_parser
+from coderouter.cli import build_parser, main, run_parser
 
 
 def test_subcommand_parses():

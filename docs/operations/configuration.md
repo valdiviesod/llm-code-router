@@ -1,7 +1,7 @@
 # Configuration
 
-Default location `~/.config/v4ld1/config.yaml`, overridable with `--config` or
-`$V4LD1_CONFIG`. Unknown keys are a hard error, not a silent ignore.
+Default location `~/.config/coderouter/config.yaml`, overridable with `--config` or
+`$CODEROUTER_CONFIG`. Unknown keys are a hard error, not a silent ignore.
 
 ```yaml
 mode: auto            # auto | economy | balanced | quality | maximum

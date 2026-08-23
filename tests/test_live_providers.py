@@ -6,10 +6,10 @@ are never part of the ordinary suite.
 
 import pytest
 
-from v4ld1.agents.antigravity.adapter import AntigravityAdapter
-from v4ld1.agents.claude.adapter import ClaudeCodeAdapter
-from v4ld1.config import AgentConfig
-from v4ld1.core.models import Task
+from coderouter.agents.antigravity.adapter import AntigravityAdapter
+from coderouter.agents.claude.adapter import ClaudeCodeAdapter
+from coderouter.config import AgentConfig
+from coderouter.core.models import Task
 
 pytestmark = pytest.mark.provider
 

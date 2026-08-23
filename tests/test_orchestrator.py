@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from v4ld1.core.models import Complexity, Task, TaskState
+from coderouter.core.models import Complexity, Task, TaskState
 
 
 async def test_run_task_records_run_and_usage(orchestrator, db, tmp_path):

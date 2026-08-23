@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from v4ld1.core.models import UsageEstimate, UsageStatus
-from v4ld1.usage.manager import UsageManager
+from coderouter.core.models import UsageEstimate, UsageStatus
+from coderouter.usage.manager import UsageManager
 
 
 def _spend(db, agent_id, tokens, hours_ago=0.0):

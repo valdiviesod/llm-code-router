@@ -34,7 +34,7 @@ class Palette:
 # Muted pastels on a near-black ground: enough contrast to read for hours,
 # not enough saturation to fight the agent output that scrolls through it.
 PASTEL_DARK = Theme(
-    name="v4ld1-pastel",
+    name="coderouter-pastel",
     dark=True,
     background="#16171f",
     surface="#1d1f29",

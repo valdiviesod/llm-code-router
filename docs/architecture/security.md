@@ -1,4 +1,4 @@
-# Security (`v4ld1/security/`)
+# Security (`coderouter/security/`)
 
 See [SECURITY.md](../../SECURITY.md) for the threat model.
 

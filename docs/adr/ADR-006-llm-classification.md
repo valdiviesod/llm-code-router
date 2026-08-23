@@ -4,11 +4,11 @@
 
 ## Context
 
-The initial task classifier (`src/v4ld1/routing/classifier.py`) relied purely on English-only regular expressions. While zero-cost and deterministic, this rule-based approach fails silently on prompts in other languages or prompts that imply high risk without matching explicit English keywords (e.g., `"borra la tabla de usuarios en produccion"`). A silent classification failure that marks a destructive operation as `risk=low` misleads the router into choosing lower-tier models and bypassing conservation protections.
+The initial task classifier (`src/coderouter/routing/classifier.py`) relied purely on English-only regular expressions. While zero-cost and deterministic, this rule-based approach fails silently on prompts in other languages or prompts that imply high risk without matching explicit English keywords (e.g., `"borra la tabla de usuarios en produccion"`). A silent classification failure that marks a destructive operation as `risk=low` misleads the router into choosing lower-tier models and bypassing conservation protections.
 
 ## Decision
 
-We introduce an LLM-backed classifier (`LLMClassifier` in `src/v4ld1/routing/llm_classifier.py`) that uses subscription-backed CLI adapters to classify prompts when necessary.
+We introduce an LLM-backed classifier (`LLMClassifier` in `src/coderouter/routing/llm_classifier.py`) that uses subscription-backed CLI adapters to classify prompts when necessary.
 
 ### 1. Hybrid `auto` mode as the default
 

@@ -17,12 +17,17 @@ from .core.models import RoutingMode
 from .errors import ConfigError
 
 DEFAULT_CONFIG_PATH = Path(
-    os.environ.get("V4LD1_CONFIG")
-    or Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "v4ld1" / "config.yaml"
+    os.environ.get("CODEROUTER_CONFIG")
+    or os.environ.get("V4LD1_CONFIG")
+    or Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    / "coderouter"
+    / "config.yaml"
 )
 DEFAULT_DATA_DIR = Path(
-    os.environ.get("V4LD1_DATA_DIR")
-    or Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "v4ld1"
+    os.environ.get("CODEROUTER_DATA_DIR")
+    or os.environ.get("V4LD1_DATA_DIR")
+    or Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    / "coderouter"
 )
 
 
@@ -108,7 +113,7 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "v4ld1.db"
+        return self.data_dir / "coderouter.db"
 
     @property
     def log_dir(self) -> Path:
@@ -184,7 +189,7 @@ def load_config(path: Path | None = None) -> Config:
 
 
 DEFAULT_CONFIG_YAML = """\
-# v4ld1 configuration. Limits are plan-specific: leave them null if unknown,
+# coderouter configuration. Limits are plan-specific: leave them null if unknown,
 # usage will then be reported as ESTIMATED/UNKNOWN rather than invented.
 mode: auto
 

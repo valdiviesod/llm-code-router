@@ -37,7 +37,7 @@ def _detach_console_logging() -> list[logging.Handler]:
 
     Textual owns the terminal. Any handler that writes to stdout/stderr paints
     on top of it, which looks exactly like a crash. `setup_logging` only rebinds
-    the `v4ld1` logger, so records from asyncio, warnings or a third-party
+    the `coderouter` logger, so records from asyncio, warnings or a third-party
     library still reach `logging.lastResort`, which is a stderr handler that
     activates precisely when the root logger has none of its own.
     """
@@ -65,9 +65,9 @@ def _git_branch(root: Path) -> str:
     return ""
 
 
-class V4ld1App(App):
+class CodeRouterApp(App):
     CSS_PATH = "styles.tcss"
-    TITLE = "v4ld1"
+    TITLE = "coderouter"
     SUB_TITLE = "AI software orchestrator"
     # The prompt input keeps focus, so bindings use keys an Input ignores.
     BINDINGS = [
@@ -170,7 +170,7 @@ class V4ld1App(App):
         else:
             state = f"[bold {p.ok}]● idle[/]"
         self.query_one("#status", Static).update(
-            f"[bold {p.info}]v4ld1[/]  "
+            f"[bold {p.info}]coderouter[/]  "
             f"[{p.muted}]mode[/] [{p.alt}]{mode}[/]  "
             f"[{p.muted}]project[/] [{p.info}]{self.project_root.name}[/]{branch_str}  "
             f"{state}"
@@ -374,3 +374,7 @@ class V4ld1App(App):
             return
         if event.state.name in ("CANCELLED", "ERROR", "SUCCESS") and self.busy:
             self._set_busy(False)
+
+
+V4ld1App = CodeRouterApp  # Backward compatibility alias
+

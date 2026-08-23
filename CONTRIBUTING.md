@@ -7,7 +7,7 @@ A change is not finished until all of these hold:
 - [ ] Implemented
 - [ ] Unit tested (and contract-tested if it touches an adapter)
 - [ ] `ruff check .` clean
-- [ ] `mypy src/v4ld1` clean
+- [ ] `mypy src/coderouter` clean
 - [ ] `pytest` green
 - [ ] Documented in `docs/`
 - [ ] `CHANGELOG.md` updated
@@ -21,7 +21,7 @@ A change is not finished until all of these hold:
 .venv/bin/pytest              # unit tests, no network, no provider CLIs
 .venv/bin/pytest -m provider  # real CLIs; costs real quota
 .venv/bin/ruff check .
-.venv/bin/mypy src/v4ld1
+.venv/bin/mypy src/coderouter
 ```
 
 ## Rules that are not negotiable

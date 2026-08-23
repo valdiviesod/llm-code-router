@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import V4ld1Error
+from ..errors import CodeRouterError
 
 
 @dataclass(slots=True)
@@ -46,12 +46,12 @@ class WorktreeManager:
         if not shutil.which("git") or not await is_git_repo(self.root):
             yield None
             return
-        branch = f"v4ld1/{task_id}-{agent_id}"
+        branch = f"coderouter/{task_id}-{agent_id}"
         path = self.base / f"{task_id}-{agent_id}"
         self.base.mkdir(parents=True, exist_ok=True)
         code, _, err = await _git(self.root, "worktree", "add", "-b", branch, str(path))
         if code != 0:
-            raise V4ld1Error(f"could not create worktree: {err.strip()}")
+            raise CodeRouterError(f"could not create worktree: {err.strip()}")
         try:
             yield Worktree(path, branch)
         finally:

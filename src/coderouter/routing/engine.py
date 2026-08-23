@@ -104,7 +104,7 @@ class RoutingEngine:
     ) -> RoutingDecision:
         adapters = self.registry.available()
         if not adapters:
-            raise NoViableAgent("no agent binary found on PATH; run `v4ld1 doctor`")
+            raise NoViableAgent("no agent binary found on PATH; run `router doctor`")
 
         mode = self.mode_for(task, mode_override)
         weights = WEIGHTS[mode]

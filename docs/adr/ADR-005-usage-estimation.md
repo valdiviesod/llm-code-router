@@ -20,7 +20,7 @@ Plan limits also differ per user and change over time, so hardcoding
 
 1. Limits are **configuration**, never constants in the code. Absent config means
    absent knowledge.
-2. v4ld1 accounts for the tokens *it* spent, per agent, in a rolling window, by
+2. coderouter accounts for the tokens *it* spent, per agent, in a rolling window, by
    `SUM` over the `usage_events` table.
 3. Every usage figure carries provenance: `CONFIRMED` (provider said so),
    `ESTIMATED` (our accounting against a configured limit), or `UNKNOWN` (no
@@ -31,7 +31,7 @@ Plan limits also differ per user and change over time, so hardcoding
 ## Consequences
 
 - The user is never shown a fabricated percentage.
-- Estimates only count usage that went *through v4ld1*; work done directly in
+- Estimates only count usage that went *through coderouter*; work done directly in
   Claude Code or agy is invisible. This is documented, and it is why the default
   is UNKNOWN rather than a confident-looking zero.
 - Forecasting, reserves and conservation mode all require the user to set limits.

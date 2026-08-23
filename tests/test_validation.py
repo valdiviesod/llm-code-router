@@ -1,6 +1,6 @@
 import subprocess
 
-from v4ld1.validation.engine import ValidationEngine, detect_stacks
+from coderouter.validation.engine import ValidationEngine, detect_stacks
 
 
 def test_detects_python_project(tmp_path):

@@ -27,7 +27,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
 ### Changed
 - TUI reworked. Two registered Textual themes, `gruvbox-dark` (default) and
-  `v4ld1-pastel`, cycled with `Ctrl+T`; each ships a matching `Palette` of hex
+  `coderouter-pastel`, cycled with `Ctrl+T`; each ships a matching `Palette` of hex
   values because Rich renderables cannot read Textual theme variables.
   `styles.tcss` now carries layout only and takes every colour from theme
   variables. The dashboard gained a status line (mode, run state,
@@ -35,8 +35,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
   emphasis, and a `Ctrl+L` clear binding. Usage, metrics and health refresh on
   an interval instead of only on `F5`. Documented in
   `docs/architecture/tui.md`.
-- The console command is now `router` (was `v4ld1`). The Python package, config
-  path and data directory keep the `v4ld1` name; only the entry point changed.
+- The console command is now `router` (was `coderouter`). The Python package, config
+  path and data directory keep the `coderouter` name; only the entry point changed.
 
 ### Added
 - Project harness: `CLAUDE.md` (rules and invariants), `.claude/settings.json`

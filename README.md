@@ -1,4 +1,4 @@
-# ⚡ v4ld1 Code Router
+# ⚡ CodeRouter
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -11,14 +11,14 @@ An intelligent, local AI coding agent orchestrator and router for Linux. It sits
 
 > ### ⚠️ Project Status: Early MVP (v0.1.0) & Known Limitations
 >
-> **v4ld1 is currently in an early development stage (initial MVP).** While the core routing engine, heuristics, Git worktree manager, security boundary, and Textual TUI are functional, there are several foundational features still in progress:
+> **coderouter is currently in an early development stage (initial MVP).** While the core routing engine, heuristics, Git worktree manager, security boundary, and Textual TUI are functional, there are several foundational features still in progress:
 >
 > 1. **Tool Calling & Function Calling for Routed LLMs:**
 >    - Current execution relies primarily on autonomous CLI agents ([Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) and [Antigravity CLI](https://github.com/google/antigravity)) running non-interactively in sub-processes.
 >    - The router does **not yet provide a generic bidirectional Tool Calling / Function Calling harness** for raw LLM completions or direct API models (e.g. OpenAI, DeepSeek, Ollama, local models).
 >    - Full [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server/client bridging and interactive tool loops for custom routed models are actively under design for upcoming releases.
 > 2. **Telemetry & Quota Estimation:**
->    - CLI agent providers do not expose real-time subscription quotas via machine-readable APIs. Quota windows and pressures are calculated using **local estimations** tracked in SQLite based on token counts from runs executed through v4ld1.
+>    - CLI agent providers do not expose real-time subscription quotas via machine-readable APIs. Quota windows and pressures are calculated using **local estimations** tracked in SQLite based on token counts from runs executed through coderouter.
 > 3. **Context Selection:**
 >    - Context selection uses heuristic file ranking and fingerprinting; semantic vector indexing is planned for future milestones.
 >
@@ -46,7 +46,7 @@ The goal is not to blindly throw the biggest, most expensive frontier model at e
 
 The goal is **maximum engineering quality per unit of token/quota spend**.
 
-v4ld1 picks the leanest, cheapest model or agent that is genuinely capable of solving the task at hand, escalating to deep-reasoning frontier models only when the task's complexity, architectural scope, or security risk justifies the spend.
+coderouter picks the leanest, cheapest model or agent that is genuinely capable of solving the task at hand, escalating to deep-reasoning frontier models only when the task's complexity, architectural scope, or security risk justifies the spend.
 
 ---
 
@@ -65,7 +65,7 @@ v4ld1 picks the leanest, cheapest model or agent that is genuinely capable of so
 ## 🏗️ Architecture
 
 ```
-                       v4ld1 CLI / TUI
+                       coderouter CLI / TUI
                               │
                      ┌────────▼────────┐
                      │   Orchestrator  │   analyse → plan → route →
@@ -109,8 +109,8 @@ Read the full architecture breakdown in [ARCHITECTURE.md](ARCHITECTURE.md) and [
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/valdiviesod/v4ld1s-code-router.git
-cd v4ld1s-code-router
+git clone https://github.com/valdiviesod/coderouter.git
+cd coderouter
 
 # 2. Set up virtual environment and install
 python3 -m venv .venv
@@ -181,13 +181,13 @@ router config --init
 
 ## ⚙️ Configuration
 
-Configuration is stored in `~/.config/v4ld1/config.yaml` (or locally via `.v4ld1.yaml`):
+Configuration is stored in `~/.config/coderouter/config.yaml` (or locally via `.coderouter.yaml`):
 
 ```yaml
 general:
   default_mode: auto          # auto | economy | balanced | quality | maximum
   worktree_dir: .worktrees
-  db_path: ~/.local/share/v4ld1/v4ld1.db
+  db_path: ~/.local/share/coderouter/coderouter.db
 
 agents:
   claude:
@@ -231,12 +231,12 @@ security:
 
 ## 🔌 Extending: Adding New Agents
 
-Adding support for another agent CLI or provider requires writing a single adapter in `src/v4ld1/agents/<name>/adapter.py` that implements `AgentAdapter`:
+Adding support for another agent CLI or provider requires writing a single adapter in `src/coderouter/agents/<name>/adapter.py` that implements `AgentAdapter`:
 
 ```python
-from v4ld1.agents.base.adapter import AgentAdapter
-from v4ld1.agents.base.registry import register
-from v4ld1.core.models import AgentCapabilities, Capability, AgentResult, Task
+from coderouter.agents.base.adapter import AgentAdapter
+from coderouter.agents.base.registry import register
+from coderouter.core.models import AgentCapabilities, Capability, AgentResult, Task
 
 @register
 class MyCustomAgentAdapter(AgentAdapter):
@@ -278,7 +278,7 @@ No changes to the router, orchestrator, TUI, or database are required. See [docs
 
 ## 🔒 Security
 
-v4ld1 is built with defense-in-depth:
+coderouter is built with defense-in-depth:
 - Dangerous shell patterns are hard-blocked by `security/policy.py`.
 - Secrets, tokens, and authorization headers are scrubbed from outputs prior to logging or persistence.
 - Review our full security model in [SECURITY.md](SECURITY.md).
@@ -293,7 +293,7 @@ To run tests and linters:
 
 ```bash
 ruff check .
-mypy src/v4ld1 --ignore-missing-imports
+mypy src/coderouter --ignore-missing-imports
 pytest
 ```
 

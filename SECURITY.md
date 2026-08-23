@@ -2,7 +2,7 @@
 
 ## Threat model
 
-v4ld1 launches coding agents that can edit files and run shell commands in your
+coderouter launches coding agents that can edit files and run shell commands in your
 project. The orchestrator is therefore treated as a privileged component, and the
 agents' output is treated as untrusted text.
 

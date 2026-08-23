@@ -1,7 +1,7 @@
 # Development setup
 
 ```bash
-git clone <repo> && cd v4ld1
+git clone <repo> && cd coderouter
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/router doctor
@@ -13,7 +13,7 @@ only to run real tasks — the unit suite mocks them.
 ## Layout
 
 ```
-src/v4ld1/
+src/coderouter/
     core/        orchestrator, domain models, task graph, doctor
     agents/      base interface + registry, one package per agent
     routing/     classifier, weighted scoring engine
@@ -35,7 +35,7 @@ src/v4ld1/
 | `.github/workflows/ci.yml` | Lint, type check and test on Python 3.11 and 3.12, plus a check that the `router` command installs. |
 | `.github/pull_request_template.md` | The invariant checklist and definition of done. |
 | `.editorconfig` | Indentation and line endings. |
-| `.engram/config.json` | Pins the engram memory project to `v4ld1`, so memories are not filed under whichever sibling repository cwd resolves to. |
+| `.engram/config.json` | Pins the engram memory project to `coderouter`, so memories are not filed under whichever sibling repository cwd resolves to. |
 
 CI deliberately never runs `-m provider`: it has no agent CLIs, and a pipeline
 that depends on someone's quota to go green is not a pipeline.
@@ -44,5 +44,5 @@ that depends on someone's quota to go green is not a pipeline.
 
 | Variable | Effect |
 |---|---|
-| `V4LD1_CONFIG` | Path to config.yaml |
-| `V4LD1_DATA_DIR` | Database and logs location |
+| `CODEROUTER_CONFIG` | Path to config.yaml |
+| `CODEROUTER_DATA_DIR` | Database and logs location |

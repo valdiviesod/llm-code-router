@@ -40,17 +40,17 @@ class JsonFormatter(logging.Formatter):
 def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(
-        log_dir / "v4ld1.log", maxBytes=5_000_000, backupCount=3
+        log_dir / "coderouter.log", maxBytes=5_000_000, backupCount=3
     )
     handler.setFormatter(JsonFormatter())
-    root = logging.getLogger("v4ld1")
+    root = logging.getLogger("coderouter")
     root.handlers = [handler]
     root.setLevel(level)
     root.propagate = False
 
 
 def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(f"v4ld1.{name}")
+    return logging.getLogger(f"coderouter.{name}")
 
 
 def log(logger: logging.Logger, level: int, msg: str, **fields: object) -> None:

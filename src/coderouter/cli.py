@@ -1,4 +1,4 @@
-"""v4ld1 command line entry point."""
+"""coderouter command line entry point."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .config import DEFAULT_CONFIG_PATH, Config, load_config, write_default_conf
 from .core.doctor import run_doctor
 from .core.models import RoutingMode
 from .core.orchestrator import Orchestrator
-from .errors import V4ld1Error
+from .errors import CodeRouterError
 from .logging import setup_logging
 from .storage.db import Database
 
@@ -61,7 +61,7 @@ async def cmd_usage(args: argparse.Namespace) -> int:
         for window in info.windows:
             if window.fraction is None:
                 print(f"  {window.label:<8} {DIM}no limit configured — "
-                      f"{window.used_tokens:,} tokens spent via v4ld1{RESET}")
+                      f"{window.used_tokens:,} tokens spent via coderouter{RESET}")
             else:
                 filled = int(window.fraction * 20)
                 bar = "█" * filled + "░" * (20 - filled)
@@ -93,7 +93,7 @@ async def cmd_config(args: argparse.Namespace) -> int:
         return 0
     path = Path(args.config) if args.config else DEFAULT_CONFIG_PATH
     if not path.exists():
-        print(f"no config at {path} (run `v4ld1 config --init`)")
+        print(f"no config at {path} (run `router config --init`)")
         return 1
     print(path.read_text())
     return 0
@@ -118,7 +118,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
 
     try:
         outcomes = await orch.run_graph(graph, mode_override=mode, on_event=on_event)
-    except V4ld1Error as exc:
+    except CodeRouterError as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
     finally:
@@ -132,9 +132,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
 
 async def cmd_tui(args: argparse.Namespace) -> int:
     config, db = _bootstrap(args)
-    from .tui.app import V4ld1App
+    from .tui.app import CodeRouterApp
 
-    await V4ld1App(config, db).run_async()
+    await CodeRouterApp(config, db).run_async()
     db.close()
     return 0
 
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(handler(args))
     except KeyboardInterrupt:
         return 130
-    except V4ld1Error as exc:
+    except CodeRouterError as exc:
         print(f"{RED}error:{RESET} {exc}", file=sys.stderr)
         return 1
 

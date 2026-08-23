@@ -1,4 +1,4 @@
-/* v4ld1 — OpenCode-inspired TUI design v2.
+/* coderouter — OpenCode-inspired TUI design v2.
    Design principles:
    - One border between edge and content (no nested borders).
    - Consistent 1-cell margin on every panel edge; 1 2 inner padding everywhere.

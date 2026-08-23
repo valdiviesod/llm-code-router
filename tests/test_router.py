@@ -1,7 +1,7 @@
 import pytest
 
-from v4ld1.core.models import Capability, Complexity, RoutingMode, Task
-from v4ld1.errors import NoViableAgent
+from coderouter.core.models import Capability, Complexity, RoutingMode, Task
+from coderouter.errors import NoViableAgent
 
 
 async def test_capability_requirement_filters_candidates(orchestrator):
@@ -64,7 +64,7 @@ async def test_critical_task_may_tap_the_reserve(orchestrator, config, db):
 
 
 async def test_weights_sum_to_one():
-    from v4ld1.routing.engine import WEIGHTS
+    from coderouter.routing.engine import WEIGHTS
     for mode, weights in WEIGHTS.items():
         assert abs(sum(weights.values()) - 1.0) < 1e-9, mode
 

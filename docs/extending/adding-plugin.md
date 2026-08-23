@@ -5,11 +5,11 @@ vendored into this repository.
 
 ```toml
 # your package's pyproject.toml
-[project.entry-points."v4ld1.agents"]
+[project.entry-points."coderouter.agents"]
 my-agent = "my_package.adapter:MyAdapter"
 ```
 
-`AgentRegistry` loads the `v4ld1.agents` group at startup, after importing the
+`AgentRegistry` loads the `coderouter.agents` group at startup, after importing the
 built-in adapters. Plugin loading is best-effort: a broken plugin is skipped
 rather than taking down the orchestrator, so check `router agents` to confirm
 yours was picked up.

@@ -11,12 +11,12 @@ import json
 
 import pytest
 
-from v4ld1.agents.antigravity.adapter import AntigravityAdapter
-from v4ld1.agents.base.adapter import AgentAdapter
-from v4ld1.agents.base.registry import AgentRegistry
-from v4ld1.agents.claude.adapter import ClaudeCodeAdapter
-from v4ld1.config import AgentConfig, Config
-from v4ld1.core.models import Capability, Task, UsageStatus
+from coderouter.agents.antigravity.adapter import AntigravityAdapter
+from coderouter.agents.base.adapter import AgentAdapter
+from coderouter.agents.base.registry import AgentRegistry
+from coderouter.agents.claude.adapter import ClaudeCodeAdapter
+from coderouter.config import AgentConfig, Config
+from coderouter.core.models import Capability, Task, UsageStatus
 
 ADAPTERS = [ClaudeCodeAdapter, AntigravityAdapter]
 

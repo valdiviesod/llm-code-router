@@ -19,7 +19,7 @@ reserve. Options: wait for the window to roll over, raise
 ## Usage always shows UNKNOWN
 
 No limits configured. Set `agents.<id>.window_limit_tokens`. Neither CLI reports
-subscription quota, so v4ld1 cannot discover it for you —
+subscription quota, so coderouter cannot discover it for you —
 see [ADR-005](../adr/ADR-005-usage-estimation.md).
 
 ## An agent fails, then a different one succeeds
@@ -49,5 +49,5 @@ your terminal is at least 80×24.
 
 ## Where is the state?
 
-Database and logs in `~/.local/share/v4ld1/` (or `$V4LD1_DATA_DIR`). Deleting the
+Database and logs in `~/.local/share/coderouter/` (or `$CODEROUTER_DATA_DIR`). Deleting the
 database loses history and routing statistics; it does not break anything else.

@@ -6,7 +6,7 @@ TUI, database or core. This walkthrough uses a hypothetical Codex CLI.
 ## 1. Create the adapter
 
 ```
-src/v4ld1/agents/codex/
+src/coderouter/agents/codex/
     __init__.py
     adapter.py
 ```
@@ -97,12 +97,12 @@ If it exposes neither, do nothing: the base class returns `UNKNOWN` and the
 ## 9. Register
 
 The `@register` decorator plus the package location is enough for built-in
-adapters — `AgentRegistry` imports `v4ld1.agents.*.adapter` automatically.
+adapters — `AgentRegistry` imports `coderouter.agents.*.adapter` automatically.
 
 For an out-of-tree plugin, publish an entry point instead:
 
 ```toml
-[project.entry-points."v4ld1.agents"]
+[project.entry-points."coderouter.agents"]
 codex = "my_package.adapter:CodexAdapter"
 ```
 

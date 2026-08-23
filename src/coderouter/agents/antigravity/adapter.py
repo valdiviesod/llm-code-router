@@ -62,7 +62,7 @@ class AntigravityAdapter(AgentAdapter):
         if not binary:
             return HealthStatus(
                 self.id, False, f"{self.command!r} not found on PATH",
-                remediation="Install the Antigravity CLI and re-run `v4ld1 doctor`",
+                remediation="Install the Antigravity CLI and re-run `router doctor`",
             )
         try:
             code, out, err = await self._run([binary, "--version"], timeout=30)

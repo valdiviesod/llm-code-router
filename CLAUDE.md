@@ -1,4 +1,4 @@
-# v4ld1 Code Router — project rules
+# CodeRouter — project rules
 
 AI coding orchestrator. It routes work between Claude Code and the Antigravity
 CLI, tracks what every run costs, and is built so that adding a tenth agent is
@@ -11,8 +11,8 @@ write a new ADR instead of quietly diverging.
 ## The command
 
 The console command is `router`. The Python package, the config path
-(`~/.config/v4ld1/config.yaml`) and the data directory (`~/.local/share/v4ld1/`)
-are all still named `v4ld1`. Do not "fix" that inconsistency: renaming them
+(`~/.config/coderouter/config.yaml`) and the data directory (`~/.local/share/coderouter/`)
+are all still named `coderouter`. Do not "fix" that inconsistency: renaming them
 breaks every existing install's config and database.
 
 ## Non-negotiable invariants
@@ -98,7 +98,7 @@ A change is not finished until all of these hold:
 - [ ] Implemented
 - [ ] Unit tested (contract-tested if it touches an adapter)
 - [ ] `ruff check .` clean
-- [ ] `mypy src/v4ld1` clean
+- [ ] `mypy src/coderouter` clean
 - [ ] `pytest` green
 - [ ] Documented in `docs/`
 - [ ] `CHANGELOG.md` updated
@@ -109,10 +109,10 @@ A change is not finished until all of these hold:
 ## Persistent memory
 
 This repository carries `.engram/config.json` pinning the engram project to
-`v4ld1`. It is needed because this machine has many git repositories side by
+`coderouter`. It is needed because this machine has many git repositories side by
 side, and without it engram cannot tell which project a memory belongs to.
 
-Save decisions, verified CLI behaviour and gotchas to the `v4ld1` project — not
+Save decisions, verified CLI behaviour and gotchas to the `coderouter` project — not
 to whatever project cwd happens to resolve to.
 
 ## Commands
@@ -121,7 +121,7 @@ to whatever project cwd happens to resolve to.
 .venv/bin/pytest              # unit + contract tests, no network, no CLIs
 .venv/bin/pytest -m provider  # real CLIs; costs real quota
 .venv/bin/ruff check .
-.venv/bin/mypy src/v4ld1
+.venv/bin/mypy src/coderouter
 router doctor                 # diagnose the local install
 ```
 
@@ -138,7 +138,7 @@ router doctor                 # diagnose the local install
 ## Layout
 
 ```
-src/v4ld1/
+src/coderouter/
     core/        orchestrator, domain models, task graph, doctor
     agents/      base interface + registry, one package per agent
     routing/     classifier, weighted scoring engine

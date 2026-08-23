@@ -12,7 +12,7 @@ root, which Claude Code loads automatically. This page is the human-facing copy.
 3. **Aggregation in SQL.** `COUNT`/`SUM`/`AVG`, never a Python loop over rows.
    Capped fetches use `limit + 1` so truncation is detectable.
 4. **Adapters never raise on provider failure.** Return `AgentResult(success=False)`.
-5. **Typed errors.** Everything derives from `V4ld1Error`.
+5. **Typed errors.** Everything derives from `CodeRouterError`.
 
 ## Style
 

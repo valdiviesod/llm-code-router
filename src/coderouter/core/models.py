@@ -113,10 +113,10 @@ class AgentCapabilities:
 
 @dataclass(slots=True)
 class Completion:
-    """A one-shot answer to a question v4ld1 asked, not work done on a repo.
-
+    """A one-shot answer to a question coderouter asked, not work done on a repo.
+    Used by the LLMClassifier to classify tasks.
     Carries its own token counts because the call spends real subscription
-    quota: anything v4ld1 spends on itself has to show up in the same
+    quota: anything coderouter spends on itself has to show up in the same
     accounting as the work it routes, or the usage figures become a lie.
     """
 

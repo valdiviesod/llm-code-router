@@ -1,8 +1,8 @@
 import pytest
 
-from v4ld1.config import load_config, write_default_config
-from v4ld1.core.models import RoutingMode
-from v4ld1.errors import ConfigError
+from coderouter.config import load_config, write_default_config
+from coderouter.core.models import RoutingMode
+from coderouter.errors import ConfigError
 
 
 def test_missing_config_yields_defaults(tmp_path):

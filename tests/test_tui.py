@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from textual.widgets import Input
 
-from v4ld1.core.models import (
+from coderouter.core.models import (
     Candidate,
     Risk,
     RoutingDecision,
@@ -14,9 +14,9 @@ from v4ld1.core.models import (
     UsageStatus,
     UsageWindow,
 )
-from v4ld1.tui.app import V4ld1App
-from v4ld1.tui.theme import DEFAULT_THEME, GRUVBOX_DARK, THEMES, palette
-from v4ld1.tui.widgets import AgentRow, AgentsPanel, RoutingPanel, UsagePanel, usage_bar
+from coderouter.tui.app import CodeRouterApp
+from coderouter.tui.theme import DEFAULT_THEME, GRUVBOX_DARK, THEMES, palette
+from coderouter.tui.widgets import AgentRow, AgentsPanel, RoutingPanel, UsagePanel, usage_bar
 
 
 def test_usage_bar_marks_unknown_limits():
@@ -28,7 +28,7 @@ def test_usage_bar_scales():
 
 
 async def test_app_starts_and_shows_panels(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.query_one("#usage", UsagePanel)
@@ -36,7 +36,7 @@ async def test_app_starts_and_shows_panels(config, db):
 
 
 async def test_mode_switch_binding(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.press("f2")
         assert app.mode_override is RoutingMode.ECONOMY
@@ -74,7 +74,7 @@ def test_agents_panel_lists_unhealthy_detail():
 
 
 async def test_prompt_is_locked_while_a_run_is_in_flight(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
         prompt = app.query_one("#prompt", Input)
@@ -85,7 +85,7 @@ async def test_prompt_is_locked_while_a_run_is_in_flight(config, db):
 
 
 async def test_gruvbox_is_the_default_theme(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.theme == GRUVBOX_DARK.name == DEFAULT_THEME
@@ -94,7 +94,7 @@ async def test_gruvbox_is_the_default_theme(config, db):
 
 async def test_cycling_theme_repoints_the_rich_palette(config, db):
     """CSS and Rich renderables must never disagree about the active theme."""
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
         seen = set()
@@ -107,7 +107,7 @@ async def test_cycling_theme_repoints_the_rich_palette(config, db):
 
 
 async def test_ctrl_c_quits_when_idle(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert not app.busy
@@ -118,7 +118,7 @@ async def test_ctrl_c_quits_when_idle(config, db):
 
 async def test_ctrl_c_cancels_the_run_instead_of_quitting(config, db):
     """A reflexive ctrl+c mid-run must stop the run, not drop the session."""
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         await pilot.pause()
 
@@ -149,7 +149,7 @@ async def test_tui_detaches_console_log_handlers(config, db):
     noisy = logging.StreamHandler()
     root.addHandler(noisy)
     try:
-        app = V4ld1App(config, db)
+        app = CodeRouterApp(config, db)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert noisy not in logging.getLogger().handlers
@@ -160,7 +160,7 @@ async def test_tui_detaches_console_log_handlers(config, db):
 
 
 async def test_ctrl_c_copies_selection_instead_of_quitting(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         app._replies.append("diff --git a/x b/x")
         copied: list[str] = []
@@ -172,7 +172,7 @@ async def test_ctrl_c_copies_selection_instead_of_quitting(config, db):
 
 
 async def test_copy_last_reply_yields_raw_agent_output(config, db):
-    app = V4ld1App(config, db)
+    app = CodeRouterApp(config, db)
     async with app.run_test() as pilot:
         copied: list[str] = []
         app.copy_to_clipboard = copied.append  # type: ignore[method-assign]

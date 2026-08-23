@@ -1,6 +1,6 @@
 # TUI
 
-Textual application under `src/v4ld1/tui/`. It renders orchestrator state and
+Textual application under `src/coderouter/tui/`. It renders orchestrator state and
 forwards user intent; it computes nothing. Every number it shows was produced by
 SQL, by an adapter, or by the usage estimator — see
 [ADR-001](../adr/ADR-001-textual-tui.md).
@@ -22,7 +22,7 @@ SQL, by an adapter, or by the usage estimator — see
 | Theme | Notes |
 |---|---|
 | `gruvbox-dark` | Default. Upstream gruvbox *dark, hard* (`#1d2021`) with the bright accents. |
-| `v4ld1-pastel` | Desaturated pastels on near-black. |
+| `coderouter-pastel` | Desaturated pastels on near-black. |
 
 Colours belong in exactly one of two places:
 
@@ -56,7 +56,7 @@ halves are one entry so they cannot drift apart.
   in `tui/` knows an agent's name.
 - **Nothing may write to the terminal but Textual.** `on_mount` calls
   `_detach_console_logging()`, which removes stream handlers from the *root*
-  logger and installs a `NullHandler`. `setup_logging` only rebinds the `v4ld1`
+  logger and installs a `NullHandler`. `setup_logging` only rebinds the `coderouter`
   logger, so without this, records from asyncio, `warnings` or a dependency fall
   through to `logging.lastResort` — a stderr handler that activates exactly when
   root has no handlers — and paint over the running app. On screen that is

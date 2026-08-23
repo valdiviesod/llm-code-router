@@ -1,10 +1,10 @@
-# UsageManager (`v4ld1/usage/`)
+# UsageManager (`coderouter/usage/`)
 
 **Why** Neither Claude Code nor the Antigravity CLI exposes subscription quota.
 Pretending otherwise would be the single most damaging thing this tool could do,
 because every routing decision depends on it.
 
-**Responsibility** Account for the tokens v4ld1 itself spent, in a rolling
+**Responsibility** Account for the tokens coderouter itself spent, in a rolling
 window, and compare against limits the user configured.
 
 ## Provenance is part of the data
@@ -12,7 +12,7 @@ window, and compare against limits the user configured.
 | Status | Meaning |
 |---|---|
 | `CONFIRMED` | The provider reported it. |
-| `ESTIMATED` | v4ld1 summed its own runs against a user-configured limit. |
+| `ESTIMATED` | coderouter summed its own runs against a user-configured limit. |
 | `UNKNOWN` | No limit configured, so no fraction can be computed. |
 
 The TUI and `router usage` always print this tag. Limits are never hardcoded —

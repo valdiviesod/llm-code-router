@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-                       v4ld1 CLI / TUI
+                       coderouter CLI / TUI
                               │
                      ┌────────▼────────┐
                      │   Orchestrator  │   analyse → plan → route →
@@ -34,7 +34,7 @@
 | `routing/` | core models, registry, usage, storage | import an adapter module |
 | `agents/<x>/` | `agents/base`, core models | import routing, tui, orchestrator |
 | `tui/` | orchestrator, models | compute business logic |
-| `storage/` | nothing in v4ld1 | know about agents |
+| `storage/` | nothing in coderouter | know about agents |
 
 The single enforcement rule: **no `if agent == "claude"` anywhere outside
 `agents/claude/`.** Behaviour differences are expressed as `Capability` values

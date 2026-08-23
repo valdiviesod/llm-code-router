@@ -1,4 +1,4 @@
-# Orchestrator (`v4ld1/core/`)
+# Orchestrator (`coderouter/core/`)
 
 **Why** Somebody has to own the end-to-end flow. If that logic leaks into the TUI
 or the adapters, every new agent or new front end has to re-implement it.

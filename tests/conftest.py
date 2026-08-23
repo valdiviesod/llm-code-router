@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from v4ld1.agents.base.adapter import AgentAdapter
-from v4ld1.agents.base.registry import AgentRegistry
-from v4ld1.config import AgentConfig, Config
-from v4ld1.core.models import (
+from coderouter.agents.base.adapter import AgentAdapter
+from coderouter.agents.base.registry import AgentRegistry
+from coderouter.config import AgentConfig, Config
+from coderouter.core.models import (
     AgentCapabilities,
     AgentResult,
     Capability,
@@ -16,8 +16,8 @@ from v4ld1.core.models import (
     Task,
     UsageStatus,
 )
-from v4ld1.core.orchestrator import Orchestrator
-from v4ld1.storage.db import Database
+from coderouter.core.orchestrator import Orchestrator
+from coderouter.storage.db import Database
 
 
 class FakeAdapter(AgentAdapter):

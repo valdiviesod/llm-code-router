@@ -5,20 +5,20 @@ from datetime import UTC, datetime, timedelta
 
 from conftest import FakeAdapter
 
-from v4ld1.agents.base.registry import AgentRegistry
-from v4ld1.config import AgentConfig
-from v4ld1.core.models import (
+from coderouter.agents.base.registry import AgentRegistry
+from coderouter.config import AgentConfig
+from coderouter.core.models import (
     Capability,
     Completion,
     Complexity,
     Risk,
 )
-from v4ld1.routing.llm_classifier import (
+from coderouter.routing.llm_classifier import (
     LLMClassifier,
     _parse,
     _strip_fence,
 )
-from v4ld1.usage.manager import UsageManager
+from coderouter.usage.manager import UsageManager
 
 
 class RaisingFakeAdapter(FakeAdapter):

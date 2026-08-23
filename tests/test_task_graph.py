@@ -1,7 +1,7 @@
 import pytest
 
-from v4ld1.core.models import Complexity, Task, TaskState
-from v4ld1.core.task_graph import TaskGraph, build_graph
+from coderouter.core.models import Complexity, Task, TaskState
+from coderouter.core.task_graph import TaskGraph, build_graph
 
 
 def test_simple_task_is_not_decomposed():

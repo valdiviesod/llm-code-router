@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from v4ld1.git.worktree import WorktreeManager, is_git_repo
+from coderouter.git.worktree import WorktreeManager, is_git_repo
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import pytest
 
-from v4ld1.core.models import Capability, Complexity, Risk
-from v4ld1.routing.classifier import classify
+from coderouter.core.models import Capability, Complexity, Risk
+from coderouter.routing.classifier import classify
 
 
 @pytest.mark.parametrize("prompt,expected", [

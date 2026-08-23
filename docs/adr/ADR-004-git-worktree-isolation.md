@@ -11,7 +11,7 @@ and loses git history. Container isolation is heavy and adds a runtime dependenc
 
 ## Decision
 
-`git worktree add -b v4ld1/<task>-<agent> .worktrees/<task>-<agent>` per
+`git worktree add -b coderouter/<task>-<agent> .worktrees/<task>-<agent>` per
 concurrent run, removed on exit. A single ready task runs in place, because there
 is nobody to collide with. Non-git projects yield `None` and run in place with
 isolation disabled.

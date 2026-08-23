@@ -20,20 +20,20 @@ def register(cls: type[AgentAdapter]) -> type[AgentAdapter]:
 
 
 def _discover() -> None:
-    import v4ld1.agents as pkg
+    import coderouter.agents as pkg
 
     for mod in pkgutil.iter_modules(pkg.__path__):
         if mod.name in ("base",) or not mod.ispkg:
             continue
         try:
-            importlib.import_module(f"v4ld1.agents.{mod.name}.adapter")
+            importlib.import_module(f"coderouter.agents.{mod.name}.adapter")
         except ModuleNotFoundError:
             continue
-    # External plugins declare entry points in the "v4ld1.agents" group.
+    # External plugins declare entry points in the "coderouter.agents" group.
     try:
         from importlib.metadata import entry_points
 
-        for ep in entry_points(group="v4ld1.agents"):
+        for ep in entry_points(group="coderouter.agents"):
             ep.load()
     except Exception:  # pragma: no cover - plugin loading is best-effort
         pass

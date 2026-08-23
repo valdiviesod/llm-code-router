@@ -1,7 +1,7 @@
 [project]
-name = "v4ld1"
+name = "coderouter"
 version = "0.1.0"
-description = "v4ld1 Code TUI - AI coding orchestrator"
+description = "CodeRouter - AI coding agent orchestrator & router"
 requires-python = ">=3.11"
 dependencies = ["textual>=0.80", "pyyaml>=6", "rich>=13"]
 
@@ -9,7 +9,8 @@ dependencies = ["textual>=0.80", "pyyaml>=6", "rich>=13"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6", "mypy>=1.11"]
 
 [project.scripts]
-router = "v4ld1.cli:main"
+router = "coderouter.cli:main"
+coderouter = "coderouter.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

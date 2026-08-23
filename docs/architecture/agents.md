@@ -1,4 +1,4 @@
-# Agent layer (`v4ld1/agents/`)
+# Agent layer (`coderouter/agents/`)
 
 **Why** The whole product rests on being able to add an agent without touching
 anything else.
@@ -11,7 +11,7 @@ the CLI's output back into an `AgentResult`.
 ```
 agents/
   base/adapter.py    the AgentAdapter interface + subprocess helpers
-  base/registry.py   discovery: built-in packages + "v4ld1.agents" entry points
+  base/registry.py   discovery: built-in packages + "coderouter.agents" entry points
   claude/adapter.py
   antigravity/adapter.py
 ```

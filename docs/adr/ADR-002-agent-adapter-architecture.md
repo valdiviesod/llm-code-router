@@ -13,7 +13,7 @@ means touching every file.
 ## Decision
 
 A single abstract `AgentAdapter` plus an `AgentRegistry` that discovers adapters
-from `v4ld1.agents.*` packages and from the `v4ld1.agents` entry-point group.
+from `coderouter.agents.*` packages and from the `coderouter.agents` entry-point group.
 Behavioural differences are expressed as `Capability` enum values that adapters
 declare and the router consumes.
 

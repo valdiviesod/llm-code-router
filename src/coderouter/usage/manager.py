@@ -1,7 +1,7 @@
 """Usage accounting and forecasting.
 
 Neither Claude Code nor the Antigravity CLI exposes subscription quota, so this
-module is the source of truth. It sums the tokens v4ld1 itself has spent inside
+module is the source of truth. It sums the tokens coderouter itself has spent inside
 a rolling window (SQL SUM, never Python arithmetic over a fetched page) and
 compares that against limits the *user* configured. Any figure derived this way
 is reported as ESTIMATED; if the adapter ever gains a real quota API its

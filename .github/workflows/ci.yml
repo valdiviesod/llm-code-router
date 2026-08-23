@@ -29,7 +29,7 @@ jobs:
         run: ruff check .
 
       - name: Type check
-        run: mypy src/v4ld1 --ignore-missing-imports
+        run: mypy src/coderouter --ignore-missing-imports
 
       # Provider tests are excluded by addopts: CI has no agent CLIs and must
       # never depend on someone's quota to go green.
@@ -37,4 +37,6 @@ jobs:
         run: pytest -q
 
       - name: Console command is installed
-        run: router --help
+        run: |
+          router --help
+          coderouter --help

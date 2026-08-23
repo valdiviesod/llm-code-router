@@ -1,6 +1,6 @@
 """Command policy and secret protection.
 
-Agents can run shell commands, so every command v4ld1 itself proposes is
+Agents can run shell commands, so every command coderouter itself proposes is
 classified before it runs. BLOCK is absolute; ASK requires a human.
 """
 

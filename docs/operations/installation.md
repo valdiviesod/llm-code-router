@@ -10,7 +10,7 @@
 ## Install
 
 ```bash
-git clone <repo> && cd v4ld1
+git clone <repo> && cd coderouter
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
@@ -24,7 +24,7 @@ ln -s "$PWD/.venv/bin/router" ~/.local/bin/router
 ## First run
 
 ```bash
-router config --init   # writes ~/.config/v4ld1/config.yaml
+router config --init   # writes ~/.config/coderouter/config.yaml
 router doctor          # verifies everything and explains what is missing
 ```
 
@@ -41,5 +41,5 @@ router "explain what this project does, change no files"
 
 ```bash
 rm ~/.local/bin/router
-rm -rf ~/.config/v4ld1 ~/.local/share/v4ld1   # config, database, logs
+rm -rf ~/.config/coderouter ~/.local/share/coderouter   # config, database, logs
 ```
