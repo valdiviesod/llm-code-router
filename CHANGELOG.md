@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
   token spend honestly against the agent's quota.
 - Surfaced classification source (`heuristic` vs `llm`) and confidence in the TUI stream
   and CLI output.
+- OpenCode terminal design aesthetics with modern dark themes (`opencode-dark` and
+  `opencode-cyber`), git branch detection in the header, card-based prompt & response
+  framing, and enhanced telemetry badges.
 - TUI text copying. `Ctrl+C` copies the mouse selection when there is one
   (previously the priority cancel/quit binding shadowed Textual's copy action,
   so nothing in the app could be copied), and still cancels or quits otherwise.

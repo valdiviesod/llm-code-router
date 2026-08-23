@@ -49,6 +49,19 @@ def _detach_console_logging() -> list[logging.Handler]:
     return removed
 
 
+def _git_branch(root: Path) -> str:
+    head = root / ".git" / "HEAD"
+    if head.exists():
+        try:
+            content = head.read_text().strip()
+            if content.startswith("ref: refs/heads/"):
+                return content.replace("ref: refs/heads/", "")
+            return content[:7]
+        except Exception:
+            pass
+    return ""
+
+
 class V4ld1App(App):
     CSS_PATH = "styles.tcss"
     TITLE = "v4ld1"
@@ -107,7 +120,10 @@ class V4ld1App(App):
                 yield AgentsPanel(id="agents-panel", classes="panel")
             with TabPane("Logs", id="logs"):
                 yield RichLog(id="logview", markup=False, wrap=True)
-        yield Input(placeholder="What should I build?", id="prompt")
+        yield Input(
+            placeholder="Ask a coding task, request a refactor, or type a prompt...",
+            id="prompt",
+        )
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -136,17 +152,20 @@ class V4ld1App(App):
     def _render_status(self) -> None:
         p = palette()
         mode = self.mode_override.value if self.mode_override else "auto"
+        branch = _git_branch(self.project_root)
+        branch_str = f" [{p.muted}]│[/] [{p.info}] {branch}[/]" if branch else ""
         if self.busy:
             elapsed = int(time.monotonic() - self._started_at)
-            state = f"[{p.warn}]running {elapsed // 60}m{elapsed % 60:02d}s[/]"
-            hint = f"   [{p.muted}]esc/ctrl+c to cancel[/]"
+            state = f"[bold {p.warn}]● running {elapsed // 60}m{elapsed % 60:02d}s[/]"
+            hint = f"   [{p.muted}](esc/ctrl+c to cancel)[/]"
         else:
-            state = f"[{p.info}]idle[/]"
+            state = f"[bold {p.ok}]● idle[/]"
             hint = ""
         self.query_one("#status", Static).update(
-            f"[{p.accent}]▍[/] [b]v4ld1[/]  [{p.muted}]mode[/] [{p.alt}]{mode}[/]"
-            f"   [{p.muted}]state[/] {state}"
-            f"   [{p.muted}]project[/] [{p.muted}]{self.project_root.name}[/]{hint}"
+            f"[{p.accent}]⚡[/] [bold {p.info}]v4ld1[/] [{p.muted}]code-router[/]  "
+            f"[{p.muted}]mode[/] [bold {p.alt}][{mode.upper()}][/]   "
+            f"[{p.muted}]state[/] {state}   "
+            f"[{p.muted}]project[/] [{p.info}]{self.project_root.name}[/]{branch_str}{hint}"
         )
 
     def _set_busy(self, busy: bool) -> None:
@@ -157,7 +176,10 @@ class V4ld1App(App):
             self._started_at = time.monotonic()
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = busy
-        prompt.placeholder = "working… (esc to cancel)" if busy else "What should I build?"
+        prompt.placeholder = (
+            "working… (esc to cancel)" if busy
+            else "Ask a coding task, request a refactor, or type a prompt..."
+        )
         self._render_status()
         if not busy:
             prompt.focus()
@@ -252,7 +274,14 @@ class V4ld1App(App):
         if not prompt or self.busy:
             return
         event.input.value = ""
-        self.query_one("#stream", RichLog).write(f"[b {palette().accent}]❯ {prompt}[/]")
+        p = palette()
+        self.query_one("#stream", RichLog).write(
+            f"\n[bold {p.accent}]╭─ User "
+            f"────────────────────────────────────────────────────────────[/]\n"
+            f"[bold {p.accent}]│[/] [bold {p.info}]❯[/] {prompt}\n"
+            f"[bold {p.accent}]╰"
+            f"────────────────────────────────────────────────────────────────────[/]"
+        )
         # Busy is set here, not inside the worker: the worker may not be
         # scheduled before the user hits enter again.
         self._set_busy(True)
@@ -267,23 +296,50 @@ class V4ld1App(App):
         try:
             task = await self.orchestrator.analyze(prompt, self.project_root)
             src_style = p.accent if task.classification_source == "llm" else p.muted
+            risk_style = (
+                p.danger if task.risk.value == "high"
+                else p.warn if task.risk.value == "medium"
+                else p.ok
+            )
             stream.write(
-                f"[{p.muted}]complexity={task.complexity.value} risk={task.risk.value} "
-                f"type={task.task_type} context={len(task.context_files)} files "
-                f"source=[/][{src_style}]{task.classification_source}[/]"
-                f"[{p.muted}] confidence={task.classification_confidence:.0%}[/]"
+                f"[{p.muted}]complexity=[/][bold {p.info}]{task.complexity.value}[/] "
+                f"[{p.muted}]risk=[/][bold {risk_style}]{task.risk.value}[/] "
+                f"[{p.muted}]type=[/][bold {p.alt}]{task.task_type}[/] "
+                f"[{p.muted}]context=[/][bold {p.info}]{len(task.context_files)} files[/] "
+                f"[{p.muted}]source=[/][{src_style}]{task.classification_source}[/] "
+                f"[{p.muted}]confidence=[/][bold {p.info}]{task.classification_confidence:.0%}[/]"
             )
             graph = self.orchestrator.plan(task)
             if len(graph.tasks) > 1:
-                stream.write(f"[{p.muted}]decomposed into {len(graph.tasks)} subtasks[/]")
-            stream.write(f"[{p.muted}]dispatching… this can take minutes[/]")
+                stream.write(
+                    f"[{p.alt}]◆ TASK GRAPH[/] [{p.muted}]decomposed into[/] "
+                    f"[bold {p.info}]{len(graph.tasks)}[/] [{p.muted}]subtasks[/]"
+                )
+            stream.write(f"[{p.muted}]⚡ dispatching to agent…[/]")
 
             async def on_event(kind: str, payload: dict) -> None:
                 logview.write(redact_secrets(f"{kind}: {payload}"))
                 if kind == "routed":
                     stream.write(
-                        f"[{p.ok}]→ {payload['agent']}[/] [{p.muted}]{payload['reason']}[/]"
+                        f"[bold {p.ok}]→ ROUTED[/] [bold {p.info}]{payload['agent']}[/] "
+                        f"[{p.muted}]│ {payload['reason']}[/]"
                     )
+                elif kind == "executed":
+                    status_tag = (
+                        f"[bold {p.ok}]✓ SUCCESS[/]" if payload.get("success")
+                        else f"[bold {p.danger}]✗ FAILED[/]"
+                    )
+                    spent = payload.get("tokens", 0)
+                    stream.write(f"{status_tag} [{p.muted}]spent {spent:,} tokens[/]")
+                elif kind == "validated":
+                    failed = payload.get("failed", [])
+                    if failed:
+                        fails = ", ".join(failed)
+                        stream.write(
+                            f"[bold {p.danger}]✗ VALIDATION FAILED[/] [{p.danger}]{fails}[/]"
+                        )
+                    else:
+                        stream.write(f"[bold {p.ok}]✓ VALIDATION PASSED[/]")
 
             try:
                 outcomes = await self.orchestrator.run_graph(

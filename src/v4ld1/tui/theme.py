@@ -115,8 +115,92 @@ GRUVBOX_PALETTE = Palette(
     accent="#fabd2f",
 )
 
+# --- opencode ---------------------------------------------------------------
+# OpenCode dark aesthetic: deep slate-obsidian with electric cyan and purple accents.
+OPENCODE_DARK = Theme(
+    name="opencode-dark",
+    dark=True,
+    background="#0d0f18",
+    surface="#131622",
+    panel="#1a1e2e",
+    foreground="#e2e8f0",
+    primary="#38bdf8",
+    secondary="#a855f7",
+    accent="#38bdf8",
+    success="#34d399",
+    warning="#fbbf24",
+    error="#f87171",
+    variables={
+        "border": "#282d42",
+        "border-blurred": "#1e2233",
+        "text-muted": "#64748b",
+        "text-disabled": "#475569",
+        "block-cursor-background": "#38bdf8",
+        "block-cursor-foreground": "#0d0f18",
+        "input-cursor-background": "#38bdf8",
+        "input-selection-background": "#38bdf8 30%",
+        "footer-key-foreground": "#38bdf8",
+        "footer-description-foreground": "#64748b",
+        "scrollbar": "#1e2233",
+        "scrollbar-hover": "#282d42",
+        "scrollbar-active": "#38bdf8",
+    },
+)
+
+OPENCODE_PALETTE = Palette(
+    ok="#34d399",
+    warn="#fbbf24",
+    danger="#f87171",
+    muted="#64748b",
+    info="#38bdf8",
+    alt="#a855f7",
+    accent="#38bdf8",
+)
+
+OPENCODE_CYBER = Theme(
+    name="opencode-cyber",
+    dark=True,
+    background="#08090d",
+    surface="#0f1118",
+    panel="#151824",
+    foreground="#f1f5f9",
+    primary="#00f2fe",
+    secondary="#b388ff",
+    accent="#00f2fe",
+    success="#00e676",
+    warning="#ffd600",
+    error="#ff1744",
+    variables={
+        "border": "#1f2438",
+        "border-blurred": "#141724",
+        "text-muted": "#546e7a",
+        "text-disabled": "#37474f",
+        "block-cursor-background": "#00f2fe",
+        "block-cursor-foreground": "#08090d",
+        "input-cursor-background": "#00f2fe",
+        "input-selection-background": "#00f2fe 30%",
+        "footer-key-foreground": "#00f2fe",
+        "footer-description-foreground": "#546e7a",
+        "scrollbar": "#141724",
+        "scrollbar-hover": "#1f2438",
+        "scrollbar-active": "#00f2fe",
+    },
+)
+
+OPENCODE_CYBER_PALETTE = Palette(
+    ok="#00e676",
+    warn="#ffd600",
+    danger="#ff1744",
+    muted="#546e7a",
+    info="#00f2fe",
+    alt="#b388ff",
+    accent="#00f2fe",
+)
+
 THEMES = {
     GRUVBOX_DARK.name: (GRUVBOX_DARK, GRUVBOX_PALETTE),
+    OPENCODE_DARK.name: (OPENCODE_DARK, OPENCODE_PALETTE),
+    OPENCODE_CYBER.name: (OPENCODE_CYBER, OPENCODE_CYBER_PALETTE),
     PASTEL_DARK.name: (PASTEL_DARK, PASTEL_PALETTE),
 }
 DEFAULT_THEME = GRUVBOX_DARK.name

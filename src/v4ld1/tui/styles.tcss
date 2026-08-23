@@ -1,5 +1,5 @@
-/* Layout only. Colours come from the registered theme (theme.py) via $vars,
-   so retheming never means editing this file. */
+/* OpenCode aesthetic for v4ld1.
+   Colours resolve from the active registered theme via $vars. */
 
 Screen {
     background: $background;
@@ -9,6 +9,9 @@ Screen {
 Header {
     background: $panel;
     color: $primary;
+    text-style: bold;
+    height: 1;
+    dock: top;
 }
 
 #status {
@@ -16,27 +19,45 @@ Header {
     padding: 0 1;
     background: $surface;
     color: $text-muted;
+    border-bottom: solid $border-blurred;
 }
 
 Tabs {
     background: $surface;
+    height: 2;
+    border-bottom: solid $border;
 }
 
 Tab {
     color: $text-muted;
+    padding: 0 2;
+}
+
+Tab:hover {
+    color: $foreground;
+    background: $panel;
 }
 
 Tab.-active {
-    color: $accent;
+    color: $primary;
     text-style: bold;
+    background: $panel;
+    border-bottom: solid $primary;
+}
+
+TabbedContent {
+    height: 1fr;
 }
 
 TabbedContent ContentSwitcher {
     background: $background;
+    height: 1fr;
 }
 
 #dashboard-top {
     height: auto;
+    max-height: 12;
+    margin-bottom: 1;
 }
 
 .panel {
@@ -45,7 +66,7 @@ TabbedContent ContentSwitcher {
     padding: 1 2;
     height: auto;
     width: 1fr;
-    margin: 0 1 1 0;
+    margin: 0 1 0 0;
 }
 
 .panel:focus-within {
@@ -60,13 +81,34 @@ TabbedContent ContentSwitcher {
 
 #stream {
     height: 1fr;
-    min-height: 8;
+    min-height: 10;
     border: round $border;
     background: $surface;
-    padding: 0 1;
+    padding: 1 2;
     margin: 0 1 1 0;
     scrollbar-background: $panel;
     scrollbar-color: $primary 60%;
+    scrollbar-color-hover: $primary;
+}
+
+#stream:focus {
+    border: round $primary;
+}
+
+#routing-panel {
+    border: round $border;
+    background: $surface;
+    padding: 1 2;
+    margin: 1 1 1 0;
+    height: 1fr;
+}
+
+#agents-panel {
+    border: round $border;
+    background: $surface;
+    padding: 1 2;
+    margin: 1 1 1 0;
+    height: 1fr;
 }
 
 #logview {
@@ -74,24 +116,33 @@ TabbedContent ContentSwitcher {
     border: round $border;
     background: $surface;
     color: $text-muted;
-    padding: 0 1;
+    padding: 1 2;
+    margin: 1 1 1 0;
 }
 
 #prompt {
     dock: bottom;
     border: round $border;
     background: $surface;
+    color: $foreground;
+    padding: 0 1;
+    margin: 0 0 0 0;
+    height: 3;
 }
 
 #prompt:focus {
     border: round $accent;
+    background: $panel;
 }
 
 #prompt:disabled {
     border: round $border-blurred;
     color: $text-disabled;
+    background: $surface;
 }
 
 Footer {
     background: $panel;
+    color: $text-muted;
+    height: 1;
 }

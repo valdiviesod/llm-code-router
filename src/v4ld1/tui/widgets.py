@@ -58,10 +58,10 @@ class UsagePanel(Static):
             for window in info.windows:
                 status = info.status.value
                 table.add_row(
-                    info.agent_id,
+                    f"● {info.agent_id}",
                     window.label,
                     usage_bar(window.fraction),
-                    Text(status.upper(), style=_status_style(status)),
+                    Text(f"[{status.upper()}]", style=_status_style(status)),
                 )
         if not self.infos:
             table.add_row("—", "—", Text("no data yet", style=f"italic {p.muted}"), "")
@@ -79,17 +79,17 @@ class RoutingPanel(Static):
         if d is None:
             return Text("No routing decision yet.", style=f"italic {p.muted}")
         text = Text()
-        text.append("▸ ", style=p.accent)
+        text.append("▸ DELEGATION: ", style=f"bold {p.muted}")
         text.append(f"{d.selected_agent}", style=f"bold {p.ok}")
         if d.selected_model:
-            text.append(f"  {d.selected_model}", style=p.muted)
+            text.append(f"  [{d.selected_model}]", style=p.accent)
         text.append("\n\n")
         text.append("mode        ", style=p.muted)
-        text.append(f"{d.mode.value}\n", style=p.alt)
+        text.append(f"[{d.mode.value.upper()}]\n", style=f"bold {p.alt}")
         text.append("confidence  ", style=p.muted)
-        text.append(f"{d.confidence:.0%}\n", style=p.info)
+        text.append(f"{d.confidence:.0%}\n", style=f"bold {p.info}")
         text.append("risk        ", style=p.muted)
-        text.append(f"{d.risk.value}\n", style=p.warn)
+        text.append(f"{d.risk.value}\n", style=f"bold {p.warn}")
         text.append("estimate    ", style=p.muted)
         text.append(f"~{d.estimated_usage.total_tokens:,} tokens\n", style=p.info)
         text.append("reason      ", style=p.muted)
@@ -117,16 +117,16 @@ class MetricsPanel(Static):
         table.add_column(justify="right", style=f"bold {p.info}")
         runs = m.get("runs", 0)
         ok = m.get("successes", 0)
-        table.add_row("Runs", str(runs))
-        table.add_row("Success rate", f"{ok / runs:.0%}" if runs else "n/a")
-        table.add_row("Avg duration", f"{m.get('avg_duration_s', 0):.1f}s")
-        table.add_row("Tokens spent", f"{m.get('total_tokens', 0):,}")
+        table.add_row("⚡ Runs", str(runs))
+        table.add_row("🎯 Success rate", f"{ok / runs:.0%}" if runs else "n/a")
+        table.add_row("⏱ Avg duration", f"{m.get('avg_duration_s', 0):.1f}s")
+        table.add_row("🔥 Tokens spent", f"{m.get('total_tokens', 0):,}")
         # The headline metric: successful work per million tokens burned.
         tokens = m.get("total_tokens", 0)
         efficiency = f"{ok / (tokens / 1_000_000):.1f}" if tokens else "n/a"
-        table.add_row("Successes / Mtok", efficiency)
+        table.add_row("✨ Successes / Mtok", efficiency)
         for state, count in sorted(m.get("tasks_by_state", {}).items()):
-            table.add_row(f"tasks:{state}", str(count))
+            table.add_row(f"  tasks:{state}", str(count))
         return table
 
 
@@ -158,7 +158,7 @@ class AgentsPanel(Static):
             table.add_row(
                 dot,
                 row.display_name,
-                row.agent_id,
+                f"[{row.agent_id}]",
                 Text(row.detail, style="" if row.healthy else p.danger),
             )
         return table
