@@ -23,13 +23,15 @@ from v4ld1.storage.db import Database
 class FakeAdapter(AgentAdapter):
     """In-memory adapter used everywhere a real CLI would be. No subprocesses."""
 
-    def __init__(self, config, agent_id="fake", caps=None, succeed=True, tokens=1000):
+    def __init__(self, config, agent_id="fake", caps=None, succeed=True, tokens=1000, completion=None):
         super().__init__(config)
         self._id = agent_id
         self._caps = caps or frozenset({Capability.CODE_EDIT, Capability.SHELL})
         self.succeed = succeed
         self.tokens = tokens
+        self.completion = completion
         self.calls: list[Task] = []
+        self.complete_calls: list[dict] = []
 
     @property
     def id(self): return self._id
@@ -48,6 +50,12 @@ class FakeAdapter(AgentAdapter):
     async def health_check(self): return HealthStatus(self._id, True, "ok", version="1.0")
 
     async def get_models(self): return [ModelInfo("m1", "Model One", self._id)]
+
+    async def complete(self, prompt, *, system="", schema=None, model=None, timeout=120):
+        self.complete_calls.append({
+            "prompt": prompt, "system": system, "schema": schema, "model": model, "timeout": timeout
+        })
+        return self.completion
 
     async def execute(self, task, *, model=None, on_event=None):
         self.calls.append(task)

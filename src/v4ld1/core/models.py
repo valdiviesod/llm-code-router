@@ -79,6 +79,9 @@ class Capability(str, Enum):
     CANCELLATION = "cancellation"
     MODEL_SELECTION = "model_selection"
     USAGE_REPORTING = "usage_reporting"
+    # Can answer a short prompt as text/JSON without acting on the repository.
+    # This is what makes an agent usable as the router's own classifier.
+    STRUCTURED_COMPLETION = "structured_completion"
 
 
 # Task types are open on purpose: the classifier may emit anything, these are
@@ -106,6 +109,28 @@ class AgentCapabilities:
 
     def has(self, *needed: Capability) -> bool:
         return all(c in self.capabilities for c in needed)
+
+
+@dataclass(slots=True)
+class Completion:
+    """A one-shot answer to a question v4ld1 asked, not work done on a repo.
+
+    Carries its own token counts because the call spends real subscription
+    quota: anything v4ld1 spends on itself has to show up in the same
+    accounting as the work it routes, or the usage figures become a lie.
+    """
+
+    text: str
+    agent_id: str
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Populated only when the provider enforced a schema on its own output.
+    structured: dict | None = None
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
 
 
 @dataclass(slots=True)
@@ -179,6 +204,8 @@ class Task:
     handoff: HandoffPackage | None = None
     attempt: int = 0
     created_at: datetime = field(default_factory=_now)
+    classification_source: str = "heuristic"
+    classification_confidence: float = 0.5
 
 
 @dataclass(slots=True)

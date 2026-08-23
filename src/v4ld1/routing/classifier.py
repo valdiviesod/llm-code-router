@@ -54,6 +54,16 @@ class Classification:
     risk: Risk
     required_capabilities: frozenset[Capability]
     reasons: list[str]
+    # How much this classification should be trusted, and who produced it.
+    # `confidence` is what lets a hybrid classifier decide whether asking a
+    # model is worth the tokens; it is evidence-based, never a guess.
+    confidence: float = 0.5
+    source: str = "heuristic"
+
+
+def capabilities_for(task_type: str) -> frozenset[Capability]:
+    """Capabilities implied by a task type, wherever the type came from."""
+    return frozenset({Capability.CODE_EDIT}) | _TYPE_CAPABILITIES.get(task_type, frozenset())
 
 
 def classify(prompt: str) -> Classification:
@@ -61,13 +71,16 @@ def classify(prompt: str) -> Classification:
     reasons: list[str] = []
 
     task_type = "general"
+    type_matched = False
     for name, pattern in _TYPE_PATTERNS:
         if re.search(pattern, text):
             task_type = name
+            type_matched = True
             reasons.append(f"matched {name} vocabulary")
             break
 
     words = len(text.split())
+    complexity_matched = True
     if re.search(_TRIVIAL_SIGNALS, text) and words < 25:
         complexity = Complexity.TRIVIAL
         reasons.append("trivial keyword, short prompt")
@@ -75,9 +88,11 @@ def classify(prompt: str) -> Classification:
         complexity = Complexity.HIGH
         reasons.append("architectural/large-scope signals")
     elif words < 12:
+        complexity_matched = False
         complexity = Complexity.LOW
         reasons.append("short, narrow prompt")
     else:
+        complexity_matched = False
         complexity = Complexity.MEDIUM
         reasons.append("default medium scope")
 
@@ -90,5 +105,12 @@ def classify(prompt: str) -> Classification:
         complexity = Complexity.CRITICAL
         reasons.append("high risk + high complexity escalates to critical")
 
-    caps = frozenset({Capability.CODE_EDIT}) | _TYPE_CAPABILITIES.get(task_type, frozenset())
-    return Classification(task_type, complexity, risk, caps, reasons)
+    # Confidence counts evidence, it does not rate the answer: every one of
+    # these patterns is English-only, so a Spanish prompt scores low and that is
+    # exactly the signal the hybrid classifier needs to escalate to a model.
+    confidence = 0.3 + 0.3 * type_matched + 0.2 * complexity_matched
+    if words < 4:
+        confidence -= 0.1
+    confidence = round(min(0.95, max(0.05, confidence)), 2)
+    return Classification(task_type, complexity, risk, capabilities_for(task_type),
+                          reasons, confidence=confidence)

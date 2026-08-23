@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 import time
 from collections.abc import Awaitable, Callable
 
@@ -18,6 +19,7 @@ from ...core.models import (
     AgentCapabilities,
     AgentResult,
     Capability,
+    Completion,
     HealthStatus,
     ModelInfo,
     Task,
@@ -32,7 +34,7 @@ _CAPS = AgentCapabilities(
         Capability.CODE_EDIT, Capability.SHELL, Capability.LONG_CONTEXT,
         Capability.DEEP_REASONING, Capability.PLANNING, Capability.REVIEW,
         Capability.MCP, Capability.STREAMING, Capability.CANCELLATION,
-        Capability.MODEL_SELECTION,
+        Capability.MODEL_SELECTION, Capability.STRUCTURED_COMPLETION,
     }),
     max_context_tokens=200_000,
 )
@@ -83,6 +85,68 @@ class ClaudeCodeAdapter(AgentAdapter):
     async def get_models(self) -> list[ModelInfo]:
         return [ModelInfo(mid, name, self.id, supports_reasoning_effort=True)
                 for mid, name in _MODELS]
+
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system: str = "",
+        schema: dict | None = None,
+        model: str | None = None,
+        timeout: int = 120,
+    ) -> Completion | None:
+        """One-shot question, kept as cheap as this CLI allows.
+
+        Measured against Claude Code 2.1.239: a bare `-p` call already bills
+        ~31k cached input tokens, because the CLI ships its full tool preamble
+        and discovers project memory from the working directory. Running from an
+        empty temporary directory with `--strict-mcp-config` and
+        `--no-session-persistence` cuts that to ~16k. It is not free and the
+        caller is expected to know that.
+
+        `--bare` would be cheaper still and is deliberately not used: it forces
+        ANTHROPIC_API_KEY authentication, and the entire point here is to spend
+        the subscription the user already pays for.
+
+        This CLI has no schema flag, so `schema` only shapes the instructions
+        and `structured` stays None; the caller validates the parsed JSON.
+        """
+        binary = self.binary_available()
+        if not binary:
+            return None
+        argv = [binary, "-p", "--output-format", "json",
+                "--strict-mcp-config", "--no-session-persistence"]
+        model = model or self.config.default_model
+        if model:
+            argv += ["--model", model]
+        if system:
+            argv += ["--system-prompt", system]
+        argv.append(prompt)
+        # An empty cwd keeps CLAUDE.md discovery — and the repository itself —
+        # out of a call that has no business reading either.
+        with tempfile.TemporaryDirectory() as sandbox:
+            try:
+                code, out, _ = await self._run(argv, cwd=sandbox, timeout=timeout)
+            except (TimeoutError, OSError):
+                return None
+        if code != 0:
+            return None
+        try:
+            payload = json.loads(out)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict) or payload.get("is_error"):
+            return None
+        usage = payload.get("usage") or {}
+        return Completion(
+            text=str(payload.get("result") or ""),
+            agent_id=self.id,
+            model=model,
+            input_tokens=(int(usage.get("input_tokens", 0) or 0)
+                          + int(usage.get("cache_read_input_tokens", 0) or 0)
+                          + int(usage.get("cache_creation_input_tokens", 0) or 0)),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+        )
 
     def _argv(self, task: Task, model: str | None) -> list[str]:
         argv = [self.command, "-p", "--output-format", "json"]

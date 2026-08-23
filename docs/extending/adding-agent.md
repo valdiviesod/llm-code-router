@@ -73,14 +73,28 @@ Keep parsing in a pure `parse_result(task, model, code, out, err, duration)` so
 the contract tests can drive it without a subprocess. Return
 `AgentResult(success=False, error=...)` on failure — never raise.
 
-## 7. Usage
+## 7. Structured completion (optional)
+
+If the CLI can answer one-shot prompts without acting on the user repository, declare `Capability.STRUCTURED_COMPLETION` and implement:
+
+```python
+async def complete(
+    self, prompt: str, *, system: str = "", schema: dict | None = None,
+    model: str | None = None, timeout: int = 120,
+) -> Completion | None:
+    ...
+```
+
+This lets the router use your adapter to classify tasks out-of-band. It must run in an empty temporary directory sandbox and return `None` on failure — never raise.
+
+## 8. Usage
 
 If the CLI reports per-run tokens, populate `input_tokens`/`output_tokens` and set
 `usage_status=CONFIRMED`. If it exposes real quota, override `get_usage()`.
 If it exposes neither, do nothing: the base class returns `UNKNOWN` and the
 `UsageManager` handles estimation. **Never invent numbers.**
 
-## 8. Register
+## 9. Register
 
 The `@register` decorator plus the package location is enough for built-in
 adapters — `AgentRegistry` imports `v4ld1.agents.*.adapter` automatically.
@@ -92,13 +106,14 @@ For an out-of-tree plugin, publish an entry point instead:
 codex = "my_package.adapter:CodexAdapter"
 ```
 
-## 9. Tests
+## 10. Tests
 
 Add your class to `ADAPTERS` in `tests/test_adapter_contract.py` and to
-`NATIVE_PAYLOADS` with a payload **captured from the real CLI**. The shared
+`NATIVE_PAYLOADS` (and `NATIVE_COMPLETION_PAYLOADS` if implementing `complete()`)
+with payloads **captured from the real CLI**. The shared
 contract then covers identity, capabilities, models, usage defaults, estimation,
 health check, parsing (success, native shape, reported failure, non-JSON,
-non-zero exit), argv and cancellation.
+non-zero exit), argv, completion and cancellation.
 
 Add a live test to `tests/test_live_providers.py` behind
 `@pytest.mark.provider` so it stays out of the default suite.

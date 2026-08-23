@@ -15,6 +15,7 @@ from ...config import AgentConfig
 from ...core.models import (
     AgentCapabilities,
     AgentResult,
+    Completion,
     HealthStatus,
     ModelInfo,
     Task,
@@ -69,6 +70,27 @@ class AgentAdapter(ABC):
         """Providers that expose no usage API return UNKNOWN and let the
         UsageManager's own accounting fill in ESTIMATED figures."""
         return UsageInfo(agent_id=self.id, windows=[], status=UsageStatus.UNKNOWN)
+
+    async def complete(
+        self,
+        prompt: str,
+        *,
+        system: str = "",
+        schema: dict | None = None,
+        model: str | None = None,
+        timeout: int = 120,
+    ) -> Completion | None:
+        """Answer a short question. Returns None when the agent cannot.
+
+        This is deliberately not `execute`: it must not run in the project, must
+        not touch files, and must not be routed. It exists so the router can ask
+        a model something (today: how to classify a prompt) through the same
+        subscription CLIs it already drives, instead of a separate API key.
+
+        Declaring Capability.STRUCTURED_COMPLETION is the promise that this
+        returns something; the default keeps every other adapter honest.
+        """
+        return None
 
     async def estimate(self, task: Task) -> UsageEstimate:
         prompt_bytes = len(task.prompt.encode())

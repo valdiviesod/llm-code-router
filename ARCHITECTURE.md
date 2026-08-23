@@ -38,12 +38,15 @@
 
 The single enforcement rule: **no `if agent == "claude"` anywhere outside
 `agents/claude/`.** Behaviour differences are expressed as `Capability` values
-that adapters declare and the router reads.
+that adapters declare and the router reads. Adapters execute tasks (`execute()`)
+and may optionally answer out-of-band structured questions (`complete()`) if they declare
+`Capability.STRUCTURED_COMPLETION`.
 
 ## Request lifecycle
 
-1. **Classify** (`routing/classifier.py`) — rule-based, zero tokens: task type,
-   complexity, risk, required capabilities.
+1. **Classify** (`routing/classifier.py`, `routing/llm_classifier.py`) — rule-based
+   heuristic with evidence scoring, escalating to an LLM via `complete()` when
+   uncertain (`auto` mode): task type, complexity, risk, required capabilities.
 2. **Select context** (`context/manager.py`) — rank project files by relevance,
    fingerprint the selection so identical context can be reused.
 3. **Plan** (`core/task_graph.py`) — decompose only if complexity is HIGH or

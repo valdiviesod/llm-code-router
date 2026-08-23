@@ -88,6 +88,47 @@ NATIVE_PAYLOADS = {
                     150, 25, "c1"),
 }
 
+NATIVE_COMPLETION_PAYLOADS = {
+    # Captured real payloads from minimal completion invocations.
+    "claude": (
+        {
+            "is_error": False,
+            "result": '{"task_type": "bug_fix", "complexity": "low", "risk": "low", '
+                      '"confidence": 0.9, "reason": "fixing typo"}',
+            "usage": {
+                "input_tokens": 10,
+                "cache_creation_input_tokens": 16077,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 116,
+            },
+        },
+        16087,
+        116,
+    ),
+    "antigravity": (
+        {
+            "status": "SUCCESS",
+            "response": '{"task_type": "bug_fix", "complexity": "low", "risk": "low", '
+                        '"confidence": 0.9, "reason": "fixing typo"}',
+            "structured_output": {
+                "task_type": "bug_fix",
+                "complexity": "low",
+                "risk": "low",
+                "confidence": 0.9,
+                "reason": "fixing typo",
+            },
+            "usage": {
+                "input_tokens": 23648,
+                "output_tokens": 88,
+                "thinking_tokens": 56,
+                "cache_read_tokens": 12206,
+            },
+        },
+        35854,
+        144,
+    ),
+}
+
 
 def test_parse_native_payload(adapter):
     payload, expect_in, expect_out, expect_session = NATIVE_PAYLOADS[adapter.id]
@@ -97,6 +138,41 @@ def test_parse_native_payload(adapter):
     assert result.input_tokens == expect_in
     assert result.output_tokens == expect_out
     assert result.session_id == expect_session
+
+
+async def test_complete_contract_with_native_payload(adapter, monkeypatch):
+    payload, expect_in, expect_out = NATIVE_COMPLETION_PAYLOADS[adapter.id]
+    monkeypatch.setattr(adapter, "binary_available", lambda: f"/bin/{adapter.default_command}")
+
+    async def fake_run(argv, **kw):
+        return 0, json.dumps(payload), ""
+
+    monkeypatch.setattr(adapter, "_run", fake_run)
+    completion = await adapter.complete("test prompt", schema={"type": "object"})
+    assert completion is not None
+    assert completion.agent_id == adapter.id
+    assert completion.input_tokens == expect_in
+    assert completion.output_tokens == expect_out
+    assert completion.total_tokens == expect_in + expect_out
+    if adapter.id == "antigravity":
+        assert completion.structured == payload["structured_output"]
+
+
+async def test_complete_returns_none_on_missing_binary(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "binary_available", lambda: None)
+    assert await adapter.complete("test") is None
+
+
+async def test_complete_returns_none_on_error_status(adapter, monkeypatch):
+    monkeypatch.setattr(adapter, "binary_available", lambda: f"/bin/{adapter.default_command}")
+    err_payload = ({"is_error": True, "result": "fail"} if adapter.id == "claude"
+                   else {"status": "ERROR", "response": "fail"})
+
+    async def fake_run(argv, **kw):
+        return 0, json.dumps(err_payload), ""
+
+    monkeypatch.setattr(adapter, "_run", fake_run)
+    assert await adapter.complete("test") is None
 
 
 def test_parse_reported_failure_status(adapter):

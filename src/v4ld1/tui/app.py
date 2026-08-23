@@ -265,13 +265,13 @@ class V4ld1App(App):
         stream = self.query_one("#stream", RichLog)
         logview = self.query_one("#logview", RichLog)
         try:
-            # Classification and context selection walk the project tree. That
-            # is blocking work, so it runs off the event loop or the UI freezes
-            # and even the cancel binding stops responding.
-            task = await asyncio.to_thread(self.orchestrator.analyze, prompt, self.project_root)
+            task = await self.orchestrator.analyze(prompt, self.project_root)
+            src_style = p.accent if task.classification_source == "llm" else p.muted
             stream.write(
                 f"[{p.muted}]complexity={task.complexity.value} risk={task.risk.value} "
-                f"type={task.task_type} context={len(task.context_files)} files[/]"
+                f"type={task.task_type} context={len(task.context_files)} files "
+                f"source=[/][{src_style}]{task.classification_source}[/]"
+                f"[{p.muted}] confidence={task.classification_confidence:.0%}[/]"
             )
             graph = self.orchestrator.plan(task)
             if len(graph.tasks) > 1:

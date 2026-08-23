@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- LLM-backed task classification (`LLMClassifier`). Prompts are classified using
+  subscription-backed CLI adapters implementing `Capability.STRUCTURED_COMPLETION`
+  and `complete()`. `auto` mode is default: the fast regex heuristic runs first and
+  escalates to a model only when heuristic confidence falls below threshold.
+- SQLite classification cache (`classification_cache`) to avoid repeated model spend
+  on identical prompts.
+- `kind` column on `usage_events` with guarded schema migration, recording classifier
+  token spend honestly against the agent's quota.
+- Surfaced classification source (`heuristic` vs `llm`) and confidence in the TUI stream
+  and CLI output.
 - TUI text copying. `Ctrl+C` copies the mouse selection when there is one
   (previously the priority cancel/quit binding shadowed Textual's copy action,
   so nothing in the app could be copied), and still cancels or quits otherwise.

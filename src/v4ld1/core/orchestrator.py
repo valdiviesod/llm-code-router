@@ -19,8 +19,8 @@ from ..context.manager import ContextManager
 from ..errors import NoViableAgent
 from ..git.worktree import WorktreeManager
 from ..logging import get_logger, log
-from ..routing.classifier import classify
 from ..routing.engine import RoutingEngine
+from ..routing.llm_classifier import LLMClassifier
 from ..security.policy import redact_secrets
 from ..storage.db import Database
 from ..usage.manager import UsageManager
@@ -56,14 +56,15 @@ class Orchestrator:
         self.db = db
         self.registry = registry or AgentRegistry(config)
         self.usage = UsageManager(config, db)
+        self.classifier = LLMClassifier(config, self.registry, self.usage, db)
         self.router = RoutingEngine(config, self.registry, self.usage, db)
         self.context = ContextManager(config.token_saving)
         self.validation = ValidationEngine()
         self._semaphore = asyncio.Semaphore(config.concurrency.globally)
 
     # --- analysis -------------------------------------------------------
-    def analyze(self, prompt: str, project_root: Path) -> Task:
-        c = classify(prompt)
+    async def analyze(self, prompt: str, project_root: Path) -> Task:
+        c = await self.classifier.classify(prompt)
         task = Task(
             prompt=prompt,
             project_root=project_root,
@@ -71,12 +72,15 @@ class Orchestrator:
             complexity=c.complexity,
             risk=c.risk,
             required_capabilities=c.required_capabilities,
+            classification_source=c.source,
+            classification_confidence=c.confidence,
         )
-        bundle = self.context.select(task)
+        bundle = await asyncio.to_thread(self.context.select, task)
         task.context_files = bundle.files
         log(logger, logging.INFO, "task classified", task_id=task.id,
             type=c.task_type, complexity=c.complexity.value, risk=c.risk.value,
-            context_files=len(bundle.files), reasons=c.reasons)
+            context_files=len(bundle.files), reasons=c.reasons,
+            source=c.source, confidence=c.confidence)
         return task
 
     def plan(self, task: Task) -> TaskGraph:
@@ -181,6 +185,8 @@ class Orchestrator:
             forced_agent=others[0].id,
             handoff=outcome.handoff,
             attempt=task.attempt + 1,
+            classification_source=task.classification_source,
+            classification_confidence=task.classification_confidence,
         )
         log(logger, logging.WARNING, "escalating after failure",
             task_id=task.id, to_agent=others[0].id)

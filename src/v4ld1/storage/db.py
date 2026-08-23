@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS idx_runs_agent ON runs(agent_id, created_at);
 CREATE TABLE IF NOT EXISTS usage_events (
     id INTEGER PRIMARY KEY, agent_id TEXT NOT NULL, run_id TEXT,
-    tokens INTEGER NOT NULL, status TEXT NOT NULL, occurred_at TEXT NOT NULL
+    tokens INTEGER NOT NULL, status TEXT NOT NULL, occurred_at TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'run'
 );
 CREATE INDEX IF NOT EXISTS idx_usage_agent_time ON usage_events(agent_id, occurred_at);
 CREATE TABLE IF NOT EXISTS routing_decisions (
@@ -69,6 +70,9 @@ CREATE TABLE IF NOT EXISTS context_cache (
     fingerprint TEXT PRIMARY KEY, project_id TEXT, summary TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS classification_cache (
+    fingerprint TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY, task_id TEXT, agent_id TEXT, action TEXT NOT NULL,
     decision TEXT, detail TEXT, created_at TEXT NOT NULL
@@ -89,6 +93,12 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(usage_events)")}
+        if "kind" not in cols:
+            self.conn.execute(
+                "ALTER TABLE usage_events ADD COLUMN kind TEXT NOT NULL DEFAULT 'run'"
+            )
+            self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()
@@ -140,10 +150,9 @@ class Database:
              result.output_tokens, result.cost_usd, result.usage_status.value,
              result.error, result.output[:2000], now),
         )
-        self.conn.execute(
-            "INSERT INTO usage_events (agent_id, run_id, tokens, status, occurred_at) "
-            "VALUES (?,?,?,?,?)",
-            (result.agent_id, run_id, result.total_tokens, result.usage_status.value, now),
+        self.record_usage(
+            result.agent_id, result.total_tokens, result.usage_status.value,
+            kind="run", run_id=run_id,
         )
         self.conn.executemany(
             "INSERT INTO file_changes (run_id, path) VALUES (?,?)",
@@ -164,6 +173,22 @@ class Database:
             (result.agent_id, task.task_type, task.complexity.value,
              int(result.success), int(not result.success), result.total_tokens,
              result.duration_s),
+        )
+        self.conn.commit()
+
+    def record_usage(
+        self,
+        agent_id: str,
+        tokens: int,
+        status: str,
+        *,
+        kind: str = "run",
+        run_id: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO usage_events (agent_id, run_id, tokens, status, occurred_at, kind) "
+            "VALUES (?,?,?,?,?,?)",
+            (agent_id, run_id, tokens, status, _utc(), kind),
         )
         self.conn.commit()
 
@@ -201,6 +226,14 @@ class Database:
         )
         self.conn.commit()
 
+    def cache_classification(self, fingerprint: str, payload: dict) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO classification_cache (fingerprint, payload, created_at) "
+            "VALUES (?,?,?)",
+            (fingerprint, json.dumps(payload), _utc()),
+        )
+        self.conn.commit()
+
     # --- reads (aggregation stays in SQL) --------------------------------
     def cached_context(self, fingerprint: str, max_age_hours: int = 24) -> str | None:
         cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
@@ -209,6 +242,20 @@ class Database:
             (fingerprint, cutoff),
         ).fetchone()
         return str(row["summary"]) if row else None
+
+    def cached_classification(self, fingerprint: str, max_age_hours: int = 168) -> dict | None:
+        cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
+        row = self.conn.execute(
+            "SELECT payload FROM classification_cache WHERE fingerprint=? AND created_at>=?",
+            (fingerprint, cutoff),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row["payload"])
+            return data if isinstance(data, dict) else None
+        except json.JSONDecodeError:
+            return None
 
     def tokens_since(self, agent_id: str, since: datetime) -> int:
         row = self.conn.execute(

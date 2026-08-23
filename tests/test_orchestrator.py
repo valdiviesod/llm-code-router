@@ -47,6 +47,6 @@ async def test_graph_runs_all_subtasks(orchestrator, tmp_path):
 
 async def test_analyze_populates_classification(orchestrator, tmp_path: Path):
     (tmp_path / "auth.py").write_text("def login(): ...")
-    task = orchestrator.analyze("fix the login auth bug", tmp_path)
+    task = await orchestrator.analyze("fix the login auth bug", tmp_path)
     assert task.task_type == "security"
     assert any(p.name == "auth.py" for p in task.context_files)

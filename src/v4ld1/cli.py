@@ -103,10 +103,12 @@ async def cmd_run(args: argparse.Namespace) -> int:
     config, db = _bootstrap(args)
     orch = Orchestrator(config, db)
     mode = RoutingMode(args.mode) if args.mode else None
-    task = orch.analyze(args.prompt, Path.cwd())
+    task = await orch.analyze(args.prompt, Path.cwd())
     task.forced_agent = getattr(args, "agent", None)
     print(f"{DIM}complexity={task.complexity.value} risk={task.risk.value} "
-          f"type={task.task_type} context_files={len(task.context_files)}{RESET}")
+          f"type={task.task_type} context_files={len(task.context_files)} "
+          f"source={task.classification_source} "
+          f"confidence={task.classification_confidence:.0%}{RESET}")
     graph = orch.plan(task)
     if len(graph.tasks) > 1:
         print(f"{DIM}decomposed into {len(graph.tasks)} subtasks{RESET}")

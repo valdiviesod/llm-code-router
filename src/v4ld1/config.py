@@ -45,6 +45,9 @@ class AgentConfig:
     timeout_s: int = 1800
 
 
+CLASSIFIER_MODES = ("heuristic", "auto", "llm")
+
+
 @dataclass(slots=True)
 class RoutingConfig:
     learning: bool = True
@@ -52,6 +55,17 @@ class RoutingConfig:
     escalation: bool = True
     max_attempts: int = 2
     safe_threshold_percent: float = 85.0
+    # How prompts are classified: "heuristic" (regex only, zero tokens),
+    # "llm" (always ask a model) or "auto" (ask only when the heuristic is
+    # unsure). A classification call bills ~16-24k tokens on both CLIs, so
+    # "llm" is measurably more expensive than it looks; "auto" is the default.
+    classifier: str = "auto"
+    classifier_threshold: float = 0.7
+    # Config key in AgentConfig.model_tiers naming the model to classify with.
+    classifier_tier: str = "trivial"
+    classifier_cache_hours: int = 168
+    classifier_max_chars: int = 2000
+    classifier_timeout_s: int = 120
 
 
 @dataclass(slots=True)
@@ -149,6 +163,11 @@ def load_config(path: Path | None = None) -> Config:
             }
         elif key == "routing":
             cfg.routing = _build(RoutingConfig, value, "routing")
+            if cfg.routing.classifier not in CLASSIFIER_MODES:
+                raise ConfigError(
+                    f"routing.classifier: expected one of {', '.join(CLASSIFIER_MODES)}, "
+                    f"got {cfg.routing.classifier!r}"
+                )
         elif key == "token_saving":
             cfg.token_saving = _build(TokenSavingConfig, value, "token_saving")
         elif key == "concurrency":
@@ -173,6 +192,14 @@ agents:
   claude:
     enabled: true
     command: claude
+    # Model per complexity tier. `classifier_tier` decides which one the
+    # router itself uses to classify prompts.
+    model_tiers:
+      trivial: haiku
+      low: haiku
+      medium: sonnet
+      high: sonnet
+      critical: opus
     window_hours: 5
     window_limit_tokens: null
     weekly_limit_tokens: null
@@ -189,6 +216,12 @@ routing:
   learning: true
   forecasting: true
   escalation: true
+  # heuristic = regex only, zero tokens. auto = ask a model only when the
+  # regex pass is unsure. llm = ask on every prompt (a classification call
+  # bills roughly 16-24k tokens, so this is not the cheap option).
+  classifier: auto
+  classifier_threshold: 0.7
+  classifier_tier: trivial
 
 token_saving:
   enabled: true
