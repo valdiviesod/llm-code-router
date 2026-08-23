@@ -1,5 +1,8 @@
 # Conventions
 
+The authoritative list lives in [CLAUDE.md](../../CLAUDE.md) at the repository
+root, which Claude Code loads automatically. This page is the human-facing copy.
+
 ## Hard rules
 
 1. **No provider branching outside `agents/<provider>/`.** Express differences as

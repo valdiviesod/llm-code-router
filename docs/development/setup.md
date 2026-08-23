@@ -26,6 +26,19 @@ src/v4ld1/
     tui/         Textual app and widgets
 ```
 
+## Project harness
+
+| File | Purpose |
+|---|---|
+| `CLAUDE.md` | The project's rules and invariants, loaded automatically by Claude Code. |
+| `.claude/settings.json` | Permission allowlist: test/lint/typecheck run unprompted, pushes and installs ask, provider tests and `.env` reads are denied. |
+| `.github/workflows/ci.yml` | Lint, type check and test on Python 3.11 and 3.12, plus a check that the `router` command installs. |
+| `.github/pull_request_template.md` | The invariant checklist and definition of done. |
+| `.editorconfig` | Indentation and line endings. |
+
+CI deliberately never runs `-m provider`: it has no agent CLIs, and a pipeline
+that depends on someone's quota to go green is not a pipeline.
+
 ## Useful environment variables
 
 | Variable | Effect |

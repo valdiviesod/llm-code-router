@@ -61,6 +61,7 @@ confirmed provider figure unless the provider confirmed it. See
 - [docs/extending/adding-agent.md](docs/extending/adding-agent.md) — add an agent
 - [docs/operations/](docs/operations/) — install, configure, troubleshoot
 - [docs/adr/](docs/adr/) — why things are the way they are
+- [CLAUDE.md](CLAUDE.md) — project rules and the invariants that must not break
 
 ## Status
 
