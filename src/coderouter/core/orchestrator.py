@@ -21,6 +21,8 @@ from ..git.worktree import WorktreeManager
 from ..logging import get_logger, log
 from ..routing.engine import RoutingEngine
 from ..routing.llm_classifier import LLMClassifier
+from ..scheduler import BatchingPolicy, SpeculativeConfig, is_speculative_eligible, race_attempts
+from ..scheduler.policy import SchedulingPolicy
 from ..security.policy import redact_secrets
 from ..skills import SkillConfig, SkillInjector, SkillRegistry
 from ..storage.db import Database
@@ -72,6 +74,10 @@ class Orchestrator:
         )
         self.tool_registry = ToolRegistry()
         self.tool_selector = ToolSelector(self.tool_registry)
+        self.scheduling_policy: SchedulingPolicy = BatchingPolicy()
+        self.speculative_config = SpeculativeConfig(
+            enabled=config.routing.speculative,
+        )
 
     @staticmethod
     def _load_skill_registry(
@@ -359,7 +365,7 @@ class Orchestrator:
         outcomes: list[TaskOutcome] = []
         previous_handoff: HandoffPackage | None = None
         while not graph.finished():
-            ready = graph.ready()
+            ready = self.scheduling_policy.decide_batch(graph)
             if not ready:
                 break
             isolate = len(ready) > 1
@@ -367,8 +373,8 @@ class Orchestrator:
                 if previous_handoff and not task.handoff:
                     task.handoff = previous_handoff
             results = await asyncio.gather(*[
-                self.run_task(t, mode_override=mode_override, isolate=isolate,
-                              on_event=on_event)
+                self._dispatch_task(t, mode_override=mode_override,
+                                    isolate=isolate, on_event=on_event)
                 for t in ready
             ], return_exceptions=True)
             for task, outcome in zip(ready, results, strict=True):
@@ -380,3 +386,81 @@ class Orchestrator:
                 outcomes.append(outcome)
                 previous_handoff = outcome.handoff
         return outcomes
+
+    async def _dispatch_task(
+        self,
+        task: Task,
+        *,
+        mode_override: RoutingMode | None,
+        isolate: bool,
+        on_event: Event | None,
+    ) -> TaskOutcome:
+        """Run one task, optionally via the speculative race.
+
+        Speculative races fire only when the task is eligible and
+        `routing.speculative: true`. The decision is computed once;
+        the top two candidates run in parallel and the first success
+        wins. Speculative is **never** for HIGH/CRITICAL complexity.
+        """
+        if not is_speculative_eligible(task, self.speculative_config):
+            return await self.run_task(
+                task, mode_override=mode_override, isolate=isolate, on_event=on_event,
+            )
+        decision = await self.router.decide(task, mode_override=mode_override)
+        alternatives = decision.alternatives[: self.speculative_config.max_attempts - 1]
+        if not alternatives:
+            return await self.run_task(
+                task, mode_override=mode_override, isolate=isolate, on_event=on_event,
+            )
+        self.db.save_decision(decision)
+        primary = self.registry.get(decision.selected_agent)
+        if primary is None:
+            return await self.run_task(
+                task, mode_override=mode_override, isolate=isolate, on_event=on_event,
+            )
+        candidates: list[tuple] = [(primary, decision.selected_model)]
+        for alt in alternatives:
+            adapter = self.registry.get(alt.agent_id)
+            if adapter is not None:
+                candidates.append((adapter, alt.model))
+        # Save the task once before the race so the audit log has a
+        # consistent record even if both attempts crash.
+        self.db.save_task(task)
+        log(logger, logging.INFO, "speculative dispatch",
+            task_id=task.id, agents=",".join(a.id for a, _ in candidates))
+
+        async def _runner(t: Task, adapter, model) -> AgentResult:
+            assert adapter is not None
+            t_copy = Task(**{**t.__dict__})
+            t_copy.forced_agent = adapter.id
+            try:
+                outcome = await self.run_task(
+                    t_copy, mode_override=mode_override, isolate=True, on_event=on_event,
+                )
+                if outcome.result is None:
+                    return AgentResult(
+                        task_id=t.id, agent_id=adapter.id, model=model,
+                        success=False, output="", error="no result",
+                    )
+                return outcome.result
+            except Exception as exc:  # noqa: BLE001 - never crash the race
+                return AgentResult(
+                    task_id=t.id, agent_id=adapter.id, model=model,
+                    success=False, output="", error=str(exc),
+                )
+
+        winning = await race_attempts(task, candidates, _runner)
+        if winning is None:
+            winning = AgentResult(
+                task_id=task.id, agent_id=primary.id, model=decision.selected_model,
+                success=False, output="", error="speculative produced no result",
+            )
+        # Persist the winning run with the actual result, mark the task
+        # state, and return an outcome so the rest of the graph can move on.
+        run_id = new_id("run")
+        winning.output = redact_secrets(winning.output)
+        self.db.save_run(run_id, task, winning)
+        task.state = TaskState.DONE if winning.success else TaskState.FAILED
+        self.db.save_task(task)
+        from .models import TaskOutcome as _Outcome
+        return _Outcome(task, decision, winning, handoff=None)

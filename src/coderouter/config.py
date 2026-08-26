@@ -99,6 +99,9 @@ class RoutingConfig:
     classifier_cache_hours: int = 168
     classifier_max_chars: int = 2000
     classifier_timeout_s: int = 120
+    # Speculative dispatch: when on, MEDIUM/LOW tasks race two agents and
+    # accept the first success. Off by default. See scheduler/speculative.py.
+    speculative: bool = False
 
 
 @dataclass(slots=True)
