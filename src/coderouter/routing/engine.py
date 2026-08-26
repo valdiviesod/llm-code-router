@@ -26,6 +26,7 @@ from ..core.models import (
 from ..errors import NoViableAgent
 from ..storage.db import Database
 from ..usage.manager import UsageManager
+from ..usage.quota_pool import QuotaBook
 
 # Per-mode weights. They must sum to 1.0 within each mode.
 WEIGHTS: dict[RoutingMode, dict[str, float]] = {
@@ -57,6 +58,7 @@ class RoutingEngine:
     registry: AgentRegistry
     usage: UsageManager
     db: Database
+    quota_book: QuotaBook | None = None
 
     def mode_for(self, task: Task, override: RoutingMode | None = None) -> RoutingMode:
         mode = override or self.config.mode
@@ -115,7 +117,15 @@ class RoutingEngine:
             if not adapter.capabilities.has(*task.required_capabilities):
                 continue
             estimate = await adapter.estimate(task)
-            pressure = await self.usage.pressure(adapter)
+            # Pool-aware quota when a QuotaBook is configured; legacy
+            # per-agent accounting otherwise. The two paths share the
+            # same 0..1 semantics so the score formula is identical.
+            if self.quota_book is not None:
+                pressure = self.quota_book.pressure(adapter.id)
+                pool_id = self._select_pool_id(adapter.id, task)
+            else:
+                pressure = await self.usage.pressure(adapter)
+                pool_id = None
             fit, fit_why = self._fit(adapter, task)
             history, hist_why = self._history(adapter, task)
             cost, cost_why = self._cost(adapter, task)
@@ -129,6 +139,8 @@ class RoutingEngine:
                 f"quota {quota:.2f}: {pressure:.0%} of window consumed",
                 f"cost {cost:.2f}: {cost_why}",
             ]
+            if pool_id is not None:
+                reasons.append(f"pool {pool_id}")
 
             forecast = await self.usage.forecast(adapter, estimate)
             if not forecast.safe:
@@ -171,6 +183,7 @@ class RoutingEngine:
             risk=task.risk,
             mode=mode,
             conservation=conservation,
+            quota_pool=self._select_pool_id(best.agent_id, task),
         )
 
     def _model_for(self, adapter: AgentAdapter, task: Task, mode: RoutingMode) -> str | None:
@@ -193,3 +206,22 @@ class RoutingEngine:
             if ordered:
                 return tiers[ordered[-1].value]
         return tiers.get(task.complexity.value, cfg.default_model)
+
+    def _select_pool_id(self, agent_id: str, task: Task) -> str | None:
+        """Pick the pool id that funded this candidate.
+
+        Returns `None` when no pool book is attached, when the agent
+        has only an implicit pool, or when no configured pool can
+        fund the task (the score-zero veto still applies in the
+        `decide` loop; this just reports the would-be funder).
+        """
+        if self.quota_book is None:
+            return None
+        for pool in self.quota_book.pools:
+            if not pool.enabled or agent_id not in pool.agent_ids:
+                continue
+            if pool.tier == "premium" and task.complexity is not Complexity.CRITICAL:
+                continue
+            return pool.id
+        impl = self.quota_book.implicit.get(agent_id)
+        return impl.id if impl else None

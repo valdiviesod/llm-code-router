@@ -263,6 +263,7 @@ class RoutingDecision:
     risk: Risk
     mode: RoutingMode
     conservation: bool = False
+    quota_pool: str | None = None
 
 
 @dataclass(slots=True)

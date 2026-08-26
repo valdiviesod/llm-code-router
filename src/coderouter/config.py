@@ -40,6 +40,24 @@ class MCPServerConfig:
 
 
 @dataclass(slots=True)
+class QuotaPoolConfig:
+    """A pool aggregates quota across one or more agent ids.
+
+    An empty config preserves the v0.1.0 behaviour: each agent has
+    its own implicit pool sized by `AgentConfig.window_limit_tokens`.
+    """
+    id: str = ""
+    kind: str = "subscription"
+    tier: str = "standard"
+    agent_ids: list[str] = field(default_factory=list)
+    window_hours: float = 5.0
+    limit_tokens: int | None = None
+    weekly_limit_tokens: int | None = None
+    reserve_percent: float = 15.0
+    enabled: bool = True
+
+
+@dataclass(slots=True)
 class AgentConfig:
     enabled: bool = True
     command: str = ""
@@ -144,6 +162,7 @@ class Config:
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
+    quota_pools: list[QuotaPoolConfig] = field(default_factory=list)
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
@@ -206,6 +225,17 @@ def _build_skills_config(data: Any) -> SkillsConfig:
     return SkillsConfig(**kwargs)
 
 
+def _build_quota_pools(data: Any) -> list[QuotaPoolConfig]:
+    if not isinstance(data, list):
+        raise ConfigError("quota_pools: expected list of pool definitions")
+    out: list[QuotaPoolConfig] = []
+    for i, entry in enumerate(data):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"quota_pools[{i}]: expected mapping")
+        out.append(_build(QuotaPoolConfig, entry, f"quota_pools[{i}]"))
+    return out
+
+
 def load_config(path: Path | None = None) -> Config:
     path = path or DEFAULT_CONFIG_PATH
     if not path.exists():
@@ -245,6 +275,8 @@ def load_config(path: Path | None = None) -> Config:
             cfg.security = _build(SecurityConfig, value, "security")
         elif key == "skills":
             cfg.skills = _build_skills_config(value)
+        elif key == "quota_pools":
+            cfg.quota_pools = _build_quota_pools(value)
         elif key == "data_dir":
             cfg.data_dir = Path(str(value)).expanduser()
         elif key == "log_level":

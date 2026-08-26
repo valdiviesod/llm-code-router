@@ -26,6 +26,7 @@ from ..skills import SkillConfig, SkillInjector, SkillRegistry
 from ..storage.db import Database
 from ..tools import MCPServer, ToolRegistry, ToolSelector
 from ..usage.manager import UsageManager
+from ..usage.quota_pool import QuotaBook, QuotaPool
 from ..validation.engine import CheckResult, ValidationEngine
 from .models import (
     AgentResult,
@@ -59,7 +60,9 @@ class Orchestrator:
         self.registry = registry or AgentRegistry(config)
         self.usage = UsageManager(config, db)
         self.classifier = LLMClassifier(config, self.registry, self.usage, db)
-        self.router = RoutingEngine(config, self.registry, self.usage, db)
+        self.quota_book = self._build_quota_book(config, db)
+        self.router = RoutingEngine(config, self.registry, self.usage, db,
+                                    quota_book=self.quota_book)
         self.context = ContextManager(config.token_saving)
         self.validation = ValidationEngine()
         self._semaphore = asyncio.Semaphore(config.concurrency.globally)
@@ -87,6 +90,50 @@ class Orchestrator:
         project = (project_root or Path.cwd()) / config.skills.project_search_path
         user = config.skills.user_search_path
         return SkillRegistry.from_paths([project, user])
+
+    @staticmethod
+    def _build_quota_book(config: Config, db: Database) -> QuotaBook:
+        """Translate `Config.quota_pools` (raw) into a `QuotaBook` (live).
+
+        Every registered agent that does not appear in any configured pool
+        ends up with one implicit pool, sized by its own `AgentConfig`
+        limits. This is the bit that keeps the unconfigured case identical
+        to v0.1.0: the implicit pool is the per-agent accounting.
+        """
+        from ..agents.base.registry import AgentRegistry
+        registry = AgentRegistry(config)
+        agent_ids = list(registry.ids)
+        pools = [
+            QuotaPool(
+                id=cfg.id,
+                kind=cfg.kind,  # type: ignore[arg-type]
+                tier=cfg.tier,  # type: ignore[arg-type]
+                agent_ids=tuple(cfg.agent_ids),
+                window_hours=cfg.window_hours,
+                limit_tokens=cfg.limit_tokens,
+                weekly_limit_tokens=cfg.weekly_limit_tokens,
+                reserve_percent=cfg.reserve_percent,
+                enabled=cfg.enabled,
+            )
+            for cfg in config.quota_pools if cfg.id
+        ]
+        # Implicit per-agent pools: a single-agent pool that mirrors the
+        # legacy AgentConfig limits, so v0.1.0 accounting carries over
+        # verbatim when the user has not configured `quota_pools:`.
+        for aid in agent_ids:
+            agent_cfg = config.agent(aid)
+            pools.append(QuotaPool(
+                id=f"_implicit:{aid}",
+                kind="subscription",
+                tier="standard",
+                agent_ids=(aid,),
+                window_hours=agent_cfg.window_hours,
+                limit_tokens=agent_cfg.window_limit_tokens,
+                weekly_limit_tokens=agent_cfg.weekly_limit_tokens,
+                reserve_percent=agent_cfg.reserve_percent,
+                enabled=True,
+            ))
+        return QuotaBook.build(pools, agent_ids, db)
 
     # --- analysis -------------------------------------------------------
     async def analyze(self, prompt: str, project_root: Path) -> Task:

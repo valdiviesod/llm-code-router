@@ -88,6 +88,26 @@ class UsageManager:
         window = info.window(f"{cfg.window_hours:g}h")
         return window.fraction if window and window.fraction is not None else 0.0
 
+    def pressure_for(self, agent_id: str) -> float:
+        """Synchronous pressure for an agent id, used by the QuotaPool book.
+
+        Returns 0.0 when the agent has no configured limit. The legacy
+        `pressure(adapter)` is the async entry point used by the
+        orchestrator; this one is the no-DB-context helper the book
+        uses when it has already opened the database.
+        """
+        cfg = self.config.agent(agent_id)
+        if cfg.window_limit_tokens is None or cfg.window_limit_tokens == 0:
+            return 0.0
+        start = (datetime.now(UTC) - timedelta(hours=cfg.window_hours)).isoformat()
+        assert self.db.conn is not None
+        row = self.db.conn.execute(
+            "SELECT COALESCE(SUM(tokens),0) AS t FROM usage_events "
+            "WHERE agent_id=? AND occurred_at>=?",
+            (agent_id, start),
+        ).fetchone()
+        return min(int(row["t"]) / cfg.window_limit_tokens, 1.0)
+
     async def conservation_mode(self, adapters: list[AgentAdapter]) -> bool:
         """True when every agent with a known limit is under quota pressure."""
         known = []
