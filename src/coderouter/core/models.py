@@ -264,6 +264,10 @@ class RoutingDecision:
     mode: RoutingMode
     conservation: bool = False
     quota_pool: str | None = None
+    #: (agent_id, reason) for every candidate a hard constraint removed before
+    #: scoring. Routing is never a black box: what was rejected, and why, is
+    #: part of the decision.
+    rejected: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -252,7 +252,7 @@ class Orchestrator:
             raise
 
         result.output = redact_secrets(result.output)
-        self.db.save_run(run_id, task, result)
+        self.db.save_run(run_id, task, result, integration)
         # Settle only once the spend is on the books, so the hold is never
         # dropped before the SQL total that replaces it exists.
         if reservation is not None:

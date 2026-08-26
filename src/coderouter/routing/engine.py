@@ -10,7 +10,8 @@ A future ML ranker plugs in by implementing score_candidates(); everything else
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from time import monotonic
 
 from ..agents.base.adapter import AgentAdapter
 from ..agents.base.registry import AgentRegistry
@@ -22,6 +23,7 @@ from ..core.models import (
     RoutingDecision,
     RoutingMode,
     Task,
+    UsageEstimate,
 )
 from ..errors import NoViableAgent
 from ..storage.db import Database
@@ -52,13 +54,55 @@ MIN_SAMPLES = 5
 NEUTRAL_PRIOR = 0.6
 
 
-@dataclass(slots=True)
+#: How long a health probe is trusted. Health is a subprocess or network call,
+#: so probing it on every routing decision would cost more than it saves.
+HEALTH_TTL_S = 60.0
+
+
+@dataclass
 class RoutingEngine:
     config: Config
     registry: AgentRegistry
     usage: UsageManager
     db: Database
     quota_book: QuotaBook | None = None
+    #: agent_id -> (checked_at_monotonic, healthy, detail)
+    _health: dict[str, tuple[float, bool, str]] = field(default_factory=dict)
+
+    async def health_of(self, adapter: AgentAdapter) -> tuple[bool, str]:
+        """Cached health probe.
+
+        A provider that is down is a hard constraint, not a soft penalty:
+        routing to it burns an attempt and a retry for a guaranteed failure.
+        A probe that itself raises counts as healthy — refusing to route
+        because our own check broke would be worse than trying.
+        """
+        now = monotonic()
+        cached = self._health.get(adapter.id)
+        if cached is not None and now - cached[0] < HEALTH_TTL_S:
+            return cached[1], cached[2]
+        try:
+            status = await adapter.health_check()
+            healthy, detail = status.healthy, (status.detail or "")
+        except Exception as exc:  # noqa: BLE001 - a broken probe must not veto
+            healthy, detail = True, f"health probe failed: {exc}"
+        self._health[adapter.id] = (now, healthy, detail)
+        return healthy, detail
+
+    @staticmethod
+    def _context_fits(adapter: AgentAdapter, estimate: UsageEstimate) -> tuple[bool, str]:
+        """Reject an agent whose context window cannot hold the input.
+
+        An unknown window is not a rejection: `None` means the adapter did not
+        declare one, and inventing a limit would veto agents for no reason.
+        """
+        limit = adapter.capabilities.max_context_tokens
+        if limit is None:
+            return True, "context window not declared"
+        if estimate.input_tokens > limit:
+            return False, (f"needs ~{estimate.input_tokens} input tokens, "
+                           f"context window is {limit}")
+        return True, f"input fits in {limit}-token context"
 
     def mode_for(self, task: Task, override: RoutingMode | None = None) -> RoutingMode:
         mode = override or self.config.mode
@@ -113,10 +157,25 @@ class RoutingEngine:
         conservation = await self.usage.conservation_mode(adapters)
         candidates: list[Candidate] = []
 
+        # Hard constraints run before any scoring: a candidate that cannot do
+        # the job at all must be rejected, not merely ranked low. Every
+        # rejection is recorded so the decision can explain itself.
+        rejected: list[tuple[str, str]] = []
         for adapter in adapters:
             if not adapter.capabilities.has(*task.required_capabilities):
+                missing = sorted(c.value for c in
+                                 task.required_capabilities - adapter.capabilities.capabilities)
+                rejected.append((adapter.id, f"lacks required capability: {', '.join(missing)}"))
                 continue
             estimate = await adapter.estimate(task)
+            fits, fits_why = self._context_fits(adapter, estimate)
+            if not fits:
+                rejected.append((adapter.id, fits_why))
+                continue
+            healthy, health_why = await self.health_of(adapter)
+            if not healthy:
+                rejected.append((adapter.id, f"unhealthy: {health_why}"))
+                continue
             # Pool-aware quota when a QuotaBook is configured; legacy
             # per-agent accounting otherwise. The two paths share the
             # same 0..1 semantics so the score formula is identical.
@@ -154,7 +213,11 @@ class RoutingEngine:
                                         self._model_for(adapter, task, mode), reasons, estimate))
 
         if not candidates:
-            raise NoViableAgent("no agent provides the required capabilities")
+            why = "; ".join(f"{aid}: {reason}" for aid, reason in rejected)
+            raise NoViableAgent(
+                f"every agent was rejected by a hard constraint ({why})" if why
+                else "no agent provides the required capabilities"
+            )
 
         if task.forced_agent:
             forced = next((c for c in candidates if c.agent_id == task.forced_agent), None)
@@ -184,6 +247,7 @@ class RoutingEngine:
             mode=mode,
             conservation=conservation,
             quota_pool=self._select_pool_id(best.agent_id, task),
+            rejected=rejected,
         )
 
     def _model_for(self, adapter: AgentAdapter, task: Task, mode: RoutingMode) -> str | None:
