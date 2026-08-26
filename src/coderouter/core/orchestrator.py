@@ -19,6 +19,7 @@ from ..context.manager import ContextManager
 from ..errors import NoViableAgent
 from ..git.worktree import WorktreeManager
 from ..logging import get_logger, log
+from ..memory import Learner, MemoryInjector, MemoryStore
 from ..routing.engine import RoutingEngine
 from ..routing.llm_classifier import LLMClassifier
 from ..scheduler import BatchingPolicy, SpeculativeConfig, is_speculative_eligible, race_attempts
@@ -77,6 +78,14 @@ class Orchestrator:
         self.scheduling_policy: SchedulingPolicy = BatchingPolicy()
         self.speculative_config = SpeculativeConfig(
             enabled=config.routing.speculative,
+        )
+        self.memory_store = MemoryStore(db)
+        self.memory_learner = Learner(
+            db, self.memory_store,
+            config=None,  # Learner reads thresholds from its own default
+        )
+        self.memory_injector = MemoryInjector(
+            self.memory_store, budget_tokens=config.memory.budget_tokens,
         )
 
     @staticmethod
@@ -160,6 +169,10 @@ class Orchestrator:
             type=c.task_type, complexity=c.complexity.value, risk=c.risk.value,
             context_files=len(bundle.files), reasons=c.reasons,
             source=c.source, confidence=c.confidence)
+        if self.config.memory.enabled:
+            block = self.memory_injector.build(task)
+            if block.block:
+                task.prompt = self.memory_injector.render_into_prompt(task.prompt, block)
         return task
 
     def plan(self, task: Task) -> TaskGraph:
@@ -229,6 +242,13 @@ class Orchestrator:
 
         outcome = TaskOutcome(task, decision, result, checks,
                               self.build_handoff(task, result, checks))
+
+        if self.config.memory.enabled and self.config.memory.auto_learn:
+            try:
+                self.memory_learner.observe(str(task.project_root.resolve()))
+            except Exception as exc:  # noqa: BLE001 - learning must never fail a run
+                log(logger, logging.WARNING, "learner skipped",
+                    task_id=task.id, error=str(exc))
 
         if not succeeded and self.config.routing.escalation:
             retried = await self._self_heal(task, outcome, on_event=on_event)

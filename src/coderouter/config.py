@@ -144,6 +144,16 @@ class AgentSkillConfig:
 
 
 @dataclass(slots=True)
+class MemoryConfig:
+    enabled: bool = True
+    auto_learn: bool = True
+    budget_tokens: int = 600
+    min_samples: int = 5
+    success_threshold: float = 0.85
+    failure_threshold: float = 0.4
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     # SAFE runs unattended, ASK prompts, BLOCK never runs.
     ask_patterns: list[str] = field(default_factory=lambda: [
@@ -166,6 +176,7 @@ class Config:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     quota_pools: list[QuotaPoolConfig] = field(default_factory=list)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
@@ -280,6 +291,8 @@ def load_config(path: Path | None = None) -> Config:
             cfg.skills = _build_skills_config(value)
         elif key == "quota_pools":
             cfg.quota_pools = _build_quota_pools(value)
+        elif key == "memory":
+            cfg.memory = _build(MemoryConfig, value, "memory")
         elif key == "data_dir":
             cfg.data_dir = Path(str(value)).expanduser()
         elif key == "log_level":

@@ -139,6 +139,35 @@ async def cmd_tui(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_memory(args: argparse.Namespace) -> int:
+    """Project-scoped memory: list / add / forget."""
+    config, db = _bootstrap(args)
+    from .memory import MemoryKind, MemoryStore
+    store = MemoryStore(db)
+    project_id = str(Path.cwd().resolve())
+    if args.memory_cmd == "list":
+        notes = store.list(project_id, limit=50)
+        if not notes:
+            print(f"{DIM}no memory notes for {project_id}{RESET}")
+            return 0
+        for n in notes:
+            print(f" {BOLD}[{n.kind.value}]{RESET} {n.key} {DIM}{n.value}{RESET}")
+    elif args.memory_cmd == "add":
+        kind = MemoryKind(args.kind)
+        store.upsert(project_id, kind, args.key, args.value)
+        print(f"{GREEN}noted:{RESET} [{kind.value}] {args.key}")
+    elif args.memory_cmd == "forget":
+        kind = MemoryKind(args.kind)
+        ok = store.delete(project_id, kind, args.key)
+        if ok:
+            print(f"{GREEN}forgot:{RESET} [{kind.value}] {args.key}")
+        else:
+            print(f"{RED}no such note:{RESET} [{kind.value}] {args.key}", file=sys.stderr)
+            return 1
+    db.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Subcommand parser. A free-text prompt is handled by run_parser instead,
     because argparse cannot disambiguate a positional from a subcommand."""
@@ -151,6 +180,19 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show orchestrator metrics")
     cfg = sub.add_parser("config", help="show or create the config file")
     cfg.add_argument("--init", action="store_true", help="write a default config")
+    mem = sub.add_parser("memory", help="project-scoped notes (list|add|forget)")
+    mem_sub = mem.add_subparsers(dest="memory_cmd", required=True)
+    mem_sub.add_parser("list", help="list notes for the current project")
+    add = mem_sub.add_parser("add", help="add or update a note")
+    add.add_argument(
+        "kind",
+        help="one of convention|decision|gotcha|note|success_pattern|failure_pattern",
+    )
+    add.add_argument("key", help="short identifier (e.g. python-style)")
+    add.add_argument("value", help="the note text")
+    forget = mem_sub.add_parser("forget", help="delete a note")
+    forget.add_argument("kind")
+    forget.add_argument("key")
     return parser
 
 
@@ -185,7 +227,7 @@ def _first_positional(argv: list[str]) -> str | None:
 
 COMMANDS = {
     "doctor": cmd_doctor, "agents": cmd_agents, "usage": cmd_usage,
-    "status": cmd_status, "config": cmd_config,
+    "status": cmd_status, "config": cmd_config, "memory": cmd_memory,
 }
 
 
