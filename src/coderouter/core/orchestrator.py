@@ -22,6 +22,7 @@ from ..logging import get_logger, log
 from ..routing.engine import RoutingEngine
 from ..routing.llm_classifier import LLMClassifier
 from ..security.policy import redact_secrets
+from ..skills import SkillConfig, SkillInjector, SkillRegistry
 from ..storage.db import Database
 from ..usage.manager import UsageManager
 from ..validation.engine import CheckResult, ValidationEngine
@@ -61,6 +62,28 @@ class Orchestrator:
         self.context = ContextManager(config.token_saving)
         self.validation = ValidationEngine()
         self._semaphore = asyncio.Semaphore(config.concurrency.globally)
+        self.skill_registry = self._load_skill_registry(config, project_root=None)
+        self.skill_injector = SkillInjector(
+            budget_tokens=config.skills.budget_tokens
+        )
+
+    @staticmethod
+    def _load_skill_registry(
+        config: Config, project_root: Path | None
+    ) -> SkillRegistry:
+        """Build a registry from the configured search paths.
+
+        The project path is resolved relative to `project_root` when given,
+        else to the current working directory. The user-global path is taken
+        verbatim from the config. If skills are disabled, the registry is
+        empty but well-formed so the rest of the orchestrator can ignore the
+        flag without branching everywhere.
+        """
+        if not config.skills.enabled:
+            return SkillRegistry()
+        project = (project_root or Path.cwd()) / config.skills.project_search_path
+        user = config.skills.user_search_path
+        return SkillRegistry.from_paths([project, user])
 
     # --- analysis -------------------------------------------------------
     async def analyze(self, prompt: str, project_root: Path) -> Task:
@@ -112,6 +135,9 @@ class Orchestrator:
         task.state = TaskState.RUNNING
         self.db.save_task(task)
 
+        self._inject_skills(task, adapter)
+        self.db.save_task(task)
+
         worktrees = WorktreeManager(task.project_root)
         async with self._semaphore:
             if isolate:
@@ -160,6 +186,33 @@ class Orchestrator:
             return await adapter.execute(task, model=decision.selected_model)
         finally:
             task.project_root = original_root
+
+    def _inject_skills(self, task: Task, adapter) -> None:
+        """Build the skills block for the chosen agent and fold it into the prompt.
+
+        Per-agent allow/deny rules come from the config. The block is appended
+        to the task prompt; `task.skill_ids` is recorded for the audit trail.
+        A disabled skills config or an empty registry is a no-op.
+        """
+        if not self.config.skills.enabled or len(self.skill_registry) == 0:
+            return
+        rules = self.config.agent_skill_config(adapter.id)
+        config = SkillConfig(
+            allowlist=frozenset(rules.allowlist),
+            denylist=frozenset(rules.denylist),
+        )
+        block = self.skill_injector.build(
+            task,
+            self.skill_registry,
+            adapter.capabilities.capabilities,
+            config=config,
+        )
+        if not block.skill_ids:
+            return
+        task.prompt = self.skill_injector.render_into_prompt(task.prompt, block)
+        task.skill_ids = list(block.skill_ids)
+        log(logger, logging.INFO, "skills applied", task_id=task.id,
+            agent_id=adapter.id, skills=",".join(block.skill_ids))
 
     async def _self_heal(
         self, task: Task, outcome: TaskOutcome, *, on_event: Event | None

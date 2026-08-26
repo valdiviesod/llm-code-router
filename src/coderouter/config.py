@@ -88,6 +88,31 @@ class ConcurrencyConfig:
 
 
 @dataclass(slots=True)
+class SkillsConfig:
+    """Skill discovery and injection.
+
+    Search paths are resolved in order, project first, then user-global, then
+    a packaged defaults directory. A project skill with the same `name` as a
+    global one wins.
+    """
+
+    enabled: bool = True
+    project_search_path: Path = field(default_factory=lambda: Path(".coderouter/skills"))
+    user_search_path: Path = field(
+        default_factory=lambda: Path.home() / ".config" / "coderouter" / "skills"
+    )
+    budget_tokens: int = 800
+    # Per-agent allow/deny by skill name. Empty allowlist means "any".
+    per_agent: dict[str, AgentSkillConfig] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AgentSkillConfig:
+    allowlist: list[str] = field(default_factory=list)
+    denylist: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     # SAFE runs unattended, ASK prompts, BLOCK never runs.
     ask_patterns: list[str] = field(default_factory=lambda: [
@@ -108,6 +133,7 @@ class Config:
     token_saving: TokenSavingConfig = field(default_factory=TokenSavingConfig)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
@@ -121,6 +147,9 @@ class Config:
 
     def agent(self, agent_id: str) -> AgentConfig:
         return self.agents.get(agent_id, AgentConfig())
+
+    def agent_skill_config(self, agent_id: str) -> AgentSkillConfig:
+        return self.skills.per_agent.get(agent_id, AgentSkillConfig())
 
 
 def _build(cls: type, data: Any, path: str) -> Any:
@@ -140,6 +169,31 @@ def _build(cls: type, data: Any, path: str) -> Any:
             value = Path(value).expanduser()
         kwargs[key] = value
     return cls(**kwargs)
+
+
+def _build_skills_config(data: Any) -> SkillsConfig:
+    """Skills config needs its own builder because the `per_agent` mapping
+    has string keys (agent ids) but the values are dataclass instances.
+    """
+    if not isinstance(data, dict):
+        raise ConfigError("skills: expected mapping")
+    known = {f.name: f for f in fields(SkillsConfig)}
+    kwargs: dict[str, Any] = {}
+    for raw_key, value in data.items():
+        if raw_key not in known:
+            raise ConfigError(f"skills.{raw_key}: unknown option")
+        if raw_key == "per_agent":
+            if not isinstance(value, dict):
+                raise ConfigError("skills.per_agent: expected mapping of agent id -> rules")
+            kwargs[raw_key] = {
+                aid: _build(AgentSkillConfig, sub, f"skills.per_agent.{aid}")
+                for aid, sub in value.items()
+            }
+        elif known[raw_key].type is Path or known[raw_key].type == "Path":
+            kwargs[raw_key] = Path(value).expanduser()
+        else:
+            kwargs[raw_key] = value
+    return SkillsConfig(**kwargs)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -179,6 +233,8 @@ def load_config(path: Path | None = None) -> Config:
             cfg.concurrency = _build(ConcurrencyConfig, value, "concurrency")
         elif key == "security":
             cfg.security = _build(SecurityConfig, value, "security")
+        elif key == "skills":
+            cfg.skills = _build_skills_config(value)
         elif key == "data_dir":
             cfg.data_dir = Path(str(value)).expanduser()
         elif key == "log_level":
