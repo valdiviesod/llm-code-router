@@ -24,6 +24,7 @@ from typing import Literal
 from ..core.models import Complexity, UsageInfo, UsageStatus, UsageWindow
 from ..storage.db import Database
 from .manager import UsageManager
+from .reservation import QuotaLedger, Reservation
 
 PoolKind = Literal["subscription", "api_key"]
 PoolTier = Literal["premium", "standard", "economy"]
@@ -62,6 +63,10 @@ class QuotaBook:
     pools: list[QuotaPool] = field(default_factory=list)
     implicit: dict[str, QuotaPool] = field(default_factory=dict)
     db: Database | None = None
+    #: Outstanding reservations. Built by `build`; None means reservations
+    #: are off and `reserve()` always declines, which is the safe default
+    #: for a book assembled by hand in a test.
+    ledger: QuotaLedger | None = None
 
     # --- construction --------------------------------------------------
 
@@ -97,7 +102,8 @@ class QuotaBook:
                 weekly_limit_tokens=None,
                 reserve_percent=15.0,
             )
-        return cls(pools=list(configured), implicit=implicit, db=db)
+        return cls(pools=list(configured), implicit=implicit, db=db,
+                   ledger=QuotaLedger())
 
     def pools_for(self, agent_id: str) -> list[QuotaPool]:
         """Every pool that covers this agent, configured first, then implicit.
@@ -161,7 +167,10 @@ class QuotaBook:
         if pool.limit_tokens is None or pool.limit_tokens == 0:
             return 0.0
         self._refresh_window(pool)
-        return min(pool.window_used / pool.limit_tokens, 1.0)
+        # In-flight reservations are pressure too: work that is already
+        # committed to but not yet on the books still cannot be spent twice.
+        reserved = self.ledger._outstanding_locked(pool.id) if self.ledger else 0
+        return min((pool.window_used + reserved) / pool.limit_tokens, 1.0)
 
     def can_fund(
         self,
@@ -178,6 +187,29 @@ class QuotaBook:
         per-agent reserve already follows. That symmetry is what
         makes the no-config case a byte-for-byte no-op: a single
         implicit pool is "standard" tier, so it is never protected.
+
+        This is advisory: between the answer and the spend, a parallel task
+        can take the same headroom. Use `reserve()` when the answer will be
+        acted on.
+        """
+        pool, reason = self._fundable_pool(
+            agent_id, estimate_tokens, complexity=complexity, user_override=user_override,
+        )
+        return pool is not None, reason
+
+    def _fundable_pool(
+        self,
+        agent_id: str,
+        estimate_tokens: int,
+        *,
+        complexity: Complexity,
+        user_override: bool,
+    ) -> tuple[QuotaPool | None, str]:
+        """The first pool that can fund the estimate, or None with the reason.
+
+        Outstanding reservations count against the window exactly as spent
+        tokens do — that is what stops two parallel tasks from both being
+        told the same headroom is theirs.
         """
         for pool in self.pools_for(agent_id):
             if not pool.enabled:
@@ -186,13 +218,57 @@ class QuotaBook:
             if is_premium and complexity is not Complexity.CRITICAL and not user_override:
                 continue
             if pool.limit_tokens is None:
-                return True, "no configured limit; usage unknown"
+                return pool, "no configured limit; usage unknown"
             self._refresh_window(pool)
+            reserved = self.ledger._outstanding_locked(pool.id) if self.ledger else 0
             threshold = pool.reserve_percent / 100
             usable = min(0.85, 1 - threshold)
-            if (pool.window_used + estimate_tokens) / pool.limit_tokens <= usable:
-                return True, "within usable share"
-        return False, "every pool above reserve"
+            projected = pool.window_used + reserved + estimate_tokens
+            if projected / pool.limit_tokens <= usable:
+                return pool, "within usable share"
+        return None, "every pool above reserve"
+
+    # --- reservations ---------------------------------------------------
+
+    def reserve(
+        self,
+        agent_id: str,
+        estimate_tokens: int,
+        *,
+        complexity: Complexity,
+        user_override: bool,
+        task_id: str | None = None,
+    ) -> Reservation | None:
+        """Atomically check affordability and claim the tokens.
+
+        Returns None when no pool can fund the estimate. The check and the
+        hold happen under one lock, so two concurrent callers cannot both be
+        granted the last of a pool's headroom.
+
+        A pool with no configured limit is still reserved against, so the
+        outstanding total is visible; it just never blocks, because an
+        unknown limit yields no fraction to compare against (Invariant 2).
+        """
+        if self.ledger is None:
+            return None
+        with self.ledger.lock:
+            pool, _reason = self._fundable_pool(
+                agent_id, estimate_tokens,
+                complexity=complexity, user_override=user_override,
+            )
+            if pool is None:
+                return None
+            return self.ledger._hold_locked(pool.id, agent_id, estimate_tokens, task_id)
+
+    def commit(self, res: Reservation, actual_tokens: int) -> None:
+        """Settle a reservation with what the run actually spent."""
+        if self.ledger is not None:
+            self.ledger.commit(res, actual_tokens)
+
+    def release(self, res: Reservation) -> None:
+        """Drop a reservation whose run never happened."""
+        if self.ledger is not None:
+            self.ledger.release(res)
 
     def usage_info(self, pool: QuotaPool) -> UsageInfo:
         self._refresh_window(pool)

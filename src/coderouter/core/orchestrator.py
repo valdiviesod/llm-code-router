@@ -10,14 +10,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..agents.base.registry import AgentRegistry
 from ..config import Config
 from ..context.manager import ContextManager
 from ..errors import NoViableAgent
-from ..git.worktree import WorktreeManager
+from ..git.worktree import IntegrationResult, Worktree, WorktreeManager
 from ..logging import get_logger, log
 from ..memory import Learner, MemoryInjector, MemoryStore
 from ..routing.engine import RoutingEngine
@@ -63,7 +63,7 @@ class Orchestrator:
         self.registry = registry or AgentRegistry(config)
         self.usage = UsageManager(config, db)
         self.classifier = LLMClassifier(config, self.registry, self.usage, db)
-        self.quota_book = self._build_quota_book(config, db)
+        self.quota_book = self._build_quota_book(config, db, self.registry)
         self.router = RoutingEngine(config, self.registry, self.usage, db,
                                     quota_book=self.quota_book)
         self.context = ContextManager(config.token_saving)
@@ -107,7 +107,9 @@ class Orchestrator:
         return SkillRegistry.from_paths([project, user])
 
     @staticmethod
-    def _build_quota_book(config: Config, db: Database) -> QuotaBook:
+    def _build_quota_book(
+        config: Config, db: Database, registry: AgentRegistry
+    ) -> QuotaBook:
         """Translate `Config.quota_pools` (raw) into a `QuotaBook` (live).
 
         Every registered agent that does not appear in any configured pool
@@ -115,8 +117,9 @@ class Orchestrator:
         limits. This is the bit that keeps the unconfigured case identical
         to v0.1.0: the implicit pool is the per-agent accounting.
         """
-        from ..agents.base.registry import AgentRegistry
-        registry = AgentRegistry(config)
+        # The *live* registry, not a fresh one: an injected registry (tests,
+        # plugin-provided adapters) would otherwise get no pools at all, and
+        # its usage would silently escape quota accounting.
         agent_ids = list(registry.ids)
         pools = [
             QuotaPool(
@@ -208,35 +211,65 @@ class Orchestrator:
         await self._select_tools(task, adapter)
         self.db.save_task(task)
 
-        worktrees = WorktreeManager(task.project_root)
-        async with self._semaphore:
-            if isolate:
-                async with worktrees.isolated(task.id, adapter.id) as wt:
-                    workdir = wt.path if wt else task.project_root
-                    result = await self._execute(adapter, task, decision, workdir)
-            else:
-                result = await self._execute(adapter, task, decision, task.project_root)
+        # Claim the estimated tokens before executing. Between the routing
+        # decision and the usage event, the spend is invisible to SQL; with
+        # parallel tasks that window is where a pool gets overspent.
+        reservation = self.quota_book.reserve(
+            adapter.id, decision.estimated_usage.total_tokens,
+            complexity=task.complexity,
+            user_override=task.forced_agent is not None,
+            task_id=task.id,
+        )
 
+        worktrees = WorktreeManager(task.project_root)
         run_id = new_id("run")
+        checks: list[CheckResult] = []
+        integration: IntegrationResult | None = None
+        try:
+            async with self._semaphore:
+                if isolate:
+                    async with worktrees.isolated(task.id, adapter.id) as wt:
+                        workdir = wt.path if wt else task.project_root
+                        result = await self._execute(adapter, task, decision, workdir)
+                        # Validate *inside* the worktree, before merging. The
+                        # attempt is what is being judged; only work that
+                        # passes its own checks is merged back.
+                        checks = await self._validate(workdir, result, run_id,
+                                                      task, emit=emit)
+                        if wt is not None:
+                            integration = await self._integrate(
+                                worktrees, wt, task, adapter.id, result, checks, emit=emit,
+                            )
+                else:
+                    result = await self._execute(adapter, task, decision, task.project_root)
+                    checks = await self._validate(task.project_root, result, run_id,
+                                                  task, emit=emit)
+        except BaseException:
+            # Cancelled or crashed: the tokens were never spent, so the hold
+            # must not outlive the attempt.
+            if reservation is not None:
+                self.quota_book.release(reservation)
+            raise
+
         result.output = redact_secrets(result.output)
         self.db.save_run(run_id, task, result)
+        # Settle only once the spend is on the books, so the hold is never
+        # dropped before the SQL total that replaces it exists.
+        if reservation is not None:
+            self.quota_book.commit(reservation, result.total_tokens)
         self.db.audit("execute", task_id=task.id, agent_id=adapter.id,
                       decision=decision.reason, detail=f"success={result.success}")
         await emit("executed", {"task": task.id, "success": result.success,
                                 "tokens": result.total_tokens})
 
-        checks: list[CheckResult] = []
-        # Validation costs real wall-clock time, so it only runs when the tree
-        # actually changed. No diff, no checks.
-        _, changed = await self.validation.git_diff(task.project_root)
-        if result.success and (changed or result.files_changed):
-            checks = await self.validation.run(task.project_root)
-            self.db.save_validation(run_id, checks)
-            await emit("validated", {"task": task.id,
-                                     "failed": [c.name for c in checks if not c.passed]})
-
         failed_checks = [c for c in checks if not c.passed and not c.skipped]
         succeeded = result.success and not failed_checks
+        # Work that could not be merged back did not happen, however well the
+        # agent reported it going.
+        if integration is not None and integration.had_changes and not integration.merged:
+            succeeded = False
+            if result.error is None:
+                result.error = f"changes not integrated: {integration.detail}"
         task.state = TaskState.DONE if succeeded else TaskState.FAILED
         self.db.save_task(task)
 
@@ -251,7 +284,10 @@ class Orchestrator:
                     task_id=task.id, error=str(exc))
 
         if not succeeded and self.config.routing.escalation:
-            retried = await self._self_heal(task, outcome, on_event=on_event)
+            retried = await self._self_heal(
+                task, outcome, mode_override=mode_override, isolate=isolate,
+                on_event=on_event,
+            )
             if retried is not None:
                 return retried
         return outcome
@@ -326,10 +362,17 @@ class Orchestrator:
                 agent_id=adapter.id, tools=",".join(t.name for t in chosen))
 
     async def _self_heal(
-        self, task: Task, outcome: TaskOutcome, *, on_event: Event | None
+        self, task: Task, outcome: TaskOutcome, *,
+        mode_override: RoutingMode | None = None,
+        isolate: bool = False,
+        on_event: Event | None,
     ) -> TaskOutcome | None:
         """One escalation attempt on a different agent, carrying a compact
-        failure report. Never re-sends the identical prompt."""
+        failure report. Never re-sends the identical prompt.
+
+        `isolate` is carried over deliberately: an escalation of an isolated
+        run that wrote straight into the project tree would put two agents in
+        one working tree, which is exactly what ADR-004 forbids."""
         if task.attempt + 1 >= self.config.routing.max_attempts:
             return None
         others = [a for a in self.registry.available()
@@ -356,7 +399,8 @@ class Orchestrator:
             task_id=task.id, to_agent=others[0].id)
         self.db.audit("escalate", task_id=task.id, agent_id=others[0].id,
                       detail="previous attempt failed")
-        return await self.run_task(retry, on_event=on_event)
+        return await self.run_task(retry, mode_override=mode_override,
+                                   isolate=isolate, on_event=on_event)
 
     def build_handoff(
         self, task: Task, result: AgentResult, checks: list[CheckResult]
@@ -372,6 +416,71 @@ class Orchestrator:
             remaining_work=[f"re-run {c.name} until it passes" for c in failed],
             risks=task.risk.value,
         )
+
+    async def _validate(
+        self, workdir: Path, result: AgentResult, run_id: str, task: Task,
+        *, emit: Event,
+    ) -> list[CheckResult]:
+        """Run the applicable checks against the tree the agent actually wrote.
+
+        Validation costs real wall-clock time, so it only runs when something
+        changed. `workdir` is the worktree when the run is isolated — checking
+        the project root there would always see an unchanged tree and silently
+        skip every check.
+        """
+        if not result.success:
+            return []
+        _, changed = await self.validation.git_diff(workdir)
+        if not (changed or result.files_changed):
+            return []
+        checks = await self.validation.run(workdir)
+        self.db.save_validation(run_id, checks)
+        await emit("validated", {"task": task.id,
+                                 "failed": [c.name for c in checks if not c.passed]})
+        return checks
+
+    async def _integrate(
+        self, worktrees: WorktreeManager, wt: Worktree, task: Task, agent_id: str,
+        result: AgentResult, checks: list[CheckResult], *, emit: Event,
+    ) -> IntegrationResult:
+        """Merge a successful attempt back, or discard a failed one.
+
+        A conflicted merge keeps its branch: that branch is the only copy of
+        the work, and throwing it away to keep the repository tidy would be
+        the same bug this module was written to fix.
+        """
+        failed = [c for c in checks if not c.passed and not c.skipped]
+        if not result.success or failed:
+            reason = "agent failed" if not result.success else "validation failed"
+            files = await worktrees.changed_files(wt)
+            log(logger, logging.INFO, "discarding attempt", task_id=task.id,
+                agent_id=agent_id, reason=reason, files=len(files))
+            await emit("discarded", {"task": task.id, "reason": reason,
+                                     "files": len(files)})
+            return IntegrationResult(merged=False, detail=reason,
+                                     had_changes=bool(files), branch=wt.branch,
+                                     files=files)
+
+        message = f"coderouter({agent_id}): {task.prompt.splitlines()[0][:60]}"
+        integration = await worktrees.integrate(wt, message)
+        if integration.conflicted:
+            worktrees.keep_branch(wt)
+        if integration.files:
+            result.files_changed = list(
+                dict.fromkeys([*result.files_changed, *integration.files])
+            )
+        log(logger, logging.INFO, "integration", task_id=task.id, agent_id=agent_id,
+            merged=integration.merged, conflicted=integration.conflicted,
+            files=len(integration.files), detail=integration.detail)
+        await emit("integrated", {"task": task.id, "merged": integration.merged,
+                                  "conflicted": integration.conflicted,
+                                  "branch": integration.branch,
+                                  "files": integration.files,
+                                  "detail": integration.detail})
+        self.db.audit("integrate", task_id=task.id, agent_id=agent_id,
+                      decision=integration.branch or "",
+                      detail=f"merged={integration.merged} {integration.detail}"[:300])
+        return integration
 
     # --- graph execution ------------------------------------------------
     async def run_graph(
@@ -449,10 +558,19 @@ class Orchestrator:
         log(logger, logging.INFO, "speculative dispatch",
             task_id=task.id, agents=",".join(a.id for a, _ in candidates))
 
+        # Each attempt goes through `run_task`, which already persists its own
+        # run row, validation and task state. Keep the full outcome of every
+        # attempt so the winner can be returned intact — re-persisting the
+        # winning AgentResult here would double-count its tokens against the
+        # quota, because usage is SUM()ed over the runs table.
+        attempt_outcomes: dict[int, TaskOutcome] = {}
+
         async def _runner(t: Task, adapter, model) -> AgentResult:
             assert adapter is not None
-            t_copy = Task(**{**t.__dict__})
-            t_copy.forced_agent = adapter.id
+            # Task is a slots dataclass, so `replace` — not `__dict__` — is
+            # the way to copy it. The id is carried over on purpose: every
+            # attempt is the same task, so they share one row.
+            t_copy = replace(t, forced_agent=adapter.id)
             try:
                 outcome = await self.run_task(
                     t_copy, mode_override=mode_override, isolate=True, on_event=on_event,
@@ -462,6 +580,7 @@ class Orchestrator:
                         task_id=t.id, agent_id=adapter.id, model=model,
                         success=False, output="", error="no result",
                     )
+                attempt_outcomes[id(outcome.result)] = outcome
                 return outcome.result
             except Exception as exc:  # noqa: BLE001 - never crash the race
                 return AgentResult(
@@ -475,12 +594,16 @@ class Orchestrator:
                 task_id=task.id, agent_id=primary.id, model=decision.selected_model,
                 success=False, output="", error="speculative produced no result",
             )
-        # Persist the winning run with the actual result, mark the task
-        # state, and return an outcome so the rest of the graph can move on.
-        run_id = new_id("run")
+        won = attempt_outcomes.get(id(winning))
+        if won is not None:
+            # Mirror the winning attempt's state onto the caller's task object;
+            # the DB row is already correct, the attempt shares this task id.
+            task.state = won.task.state
+            return TaskOutcome(task, decision, winning, won.checks, won.handoff)
+        # No attempt produced an outcome (all raised, or the race was empty):
+        # persist the synthesised failure so the audit log is not silent.
         winning.output = redact_secrets(winning.output)
-        self.db.save_run(run_id, task, winning)
-        task.state = TaskState.DONE if winning.success else TaskState.FAILED
+        self.db.save_run(new_id("run"), task, winning)
+        task.state = TaskState.FAILED
         self.db.save_task(task)
-        from .models import TaskOutcome as _Outcome
-        return _Outcome(task, decision, winning, handoff=None)
+        return TaskOutcome(task, decision, winning, [], None)

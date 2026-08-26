@@ -19,10 +19,16 @@ import contextlib
 import json
 from typing import Any
 
+from .. import __version__
 from ..logging import get_logger
 from .models import MCPServer, Tool
 
 logger = get_logger("tools.mcp_client")
+
+#: MCP revision this client speaks. Sent in `initialize`; servers negotiate down.
+PROTOCOL_VERSION = "2024-11-05"
+#: How many stray stdout lines to skip while hunting for a response id.
+MAX_INTERLEAVED_LINES = 64
 
 
 class MCPClient:
@@ -38,10 +44,12 @@ class MCPClient:
         self._proc: asyncio.subprocess.Process | None = None
         self._id = 0
         self._lock = asyncio.Lock()
+        self._initialized = False
 
     async def _ensure_started(self) -> bool:
         if self._proc is not None and self._proc.returncode is None:
             return True
+        self._initialized = False
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 self._server.command, *self._server.args,
@@ -53,29 +61,81 @@ class MCPClient:
             logger.warning("MCP server %r failed to start: %s", self._server.name, exc)
             self._proc = None
             return False
+        return await self._handshake()
+
+    async def _handshake(self) -> bool:
+        """Perform the MCP `initialize` exchange.
+
+        The protocol requires this before any other request: a server that
+        receives `tools/list` first is entitled to reject it, so skipping the
+        handshake makes the client fail against every conformant server.
+        """
+        resp = await self._send("initialize", {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "coderouter", "version": __version__},
+        })
+        if resp is None or "result" not in resp:
+            logger.warning("MCP server %r did not complete initialize", self._server.name)
+            return False
+        # `notifications/initialized` carries no id and gets no reply.
+        if not await self._notify("notifications/initialized", {}):
+            return False
+        self._initialized = True
         return True
+
+    async def _notify(self, method: str, params: dict[str, Any]) -> bool:
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return False
+        msg = {"jsonrpc": "2.0", "method": method, "params": params}
+        try:
+            proc.stdin.write((json.dumps(msg) + "\n").encode())
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            logger.warning("MCP %r %s failed: %s", self._server.name, method, exc)
+            return False
+        return True
+
+    async def _send(self, method: str, params: dict[str, Any]) -> dict[str, Any] | None:
+        """Write one request and read the response with the matching id.
+
+        Servers are free to interleave notifications and log messages on
+        stdout, so a bare `readline()` can return something that is not the
+        answer. Lines are drained until the id matches or the budget runs out.
+        """
+        proc = self._proc
+        if proc is None or proc.stdin is None or proc.stdout is None:
+            return None
+        self._id += 1
+        req_id = self._id
+        req = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+        try:
+            proc.stdin.write((json.dumps(req) + "\n").encode())
+            await proc.stdin.drain()
+            for _ in range(MAX_INTERLEAVED_LINES):
+                line = await asyncio.wait_for(proc.stdout.readline(),
+                                              timeout=self._timeout)
+                if not line:
+                    return None
+                try:
+                    msg = json.loads(line.decode())
+                except json.JSONDecodeError:
+                    continue  # server chatter on stdout, not our answer
+                if isinstance(msg, dict) and msg.get("id") == req_id:
+                    return msg
+            logger.warning("MCP %r %s: no response among %d lines",
+                           self._server.name, method, MAX_INTERLEAVED_LINES)
+            return None
+        except (TimeoutError, BrokenPipeError, ConnectionResetError) as exc:
+            logger.warning("MCP %r %s failed: %s", self._server.name, method, exc)
+            return None
 
     async def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any] | None:
         async with self._lock:
-            if not await self._ensure_started():
+            if not await self._ensure_started() or not self._initialized:
                 return None
-            self._id += 1
-            req = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params}
-            assert self._proc is not None
-            try:
-                self._proc.stdin.write((json.dumps(req) + "\n").encode())
-                await self._proc.stdin.drain()
-                line = await asyncio.wait_for(self._proc.stdout.readline(),
-                                              timeout=self._timeout)
-            except (TimeoutError, BrokenPipeError, ConnectionResetError) as exc:
-                logger.warning("MCP %r %s failed: %s", self._server.name, method, exc)
-                return None
-            if not line:
-                return None
-            try:
-                return json.loads(line.decode())
-            except json.JSONDecodeError:
-                return None
+            return await self._send(method, params)
 
     async def list_tools(self) -> list[Tool]:
         resp = await self._request("tools/list", {})

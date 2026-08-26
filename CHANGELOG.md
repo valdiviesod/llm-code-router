@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Quota reservations** (`usage/reservation.py`). `QuotaBook.reserve()` /
+  `commit()` / `release()` claim a task's estimated tokens before it runs, so
+  parallel tasks cannot each be granted the same remaining headroom. Outstanding
+  reservations count towards quota pressure; `run_task` releases the hold on
+  cancellation and commits it once the usage event is written.
+- MCP `initialize` handshake and response-id correlation in `MCPClient`, plus
+  the first end-to-end tests for it against a real stdio subprocess.
+
+### Fixed
+- Speculative dispatch was dead on arrival: it imported `TaskOutcome` from the
+  wrong module and copied a slots dataclass through `__dict__`, so enabling
+  `routing.speculative` crashed on the first eligible task. It also re-persisted
+  the winning run, double-counting its tokens against the quota. The winning
+  attempt's real outcome — checks and handoff included — is now returned intact.
+- `MCPClient` sent `tools/list` before `initialize`, which a conformant MCP
+  server is entitled to reject, and treated the next line on stdout as the
+  response even when it was server chatter or a notification.
+- The orchestrator built its `QuotaBook` from a fresh `AgentRegistry` instead of
+  the live one, so an injected or plugin-provided adapter got no quota pools and
+  its usage escaped accounting entirely.
+- `mypy src/coderouter` is clean again (it was reporting 9 errors, two of them
+  real crashes). A stray `src/__init__.py` made every module resolvable under two
+  names; added a `py.typed` marker and `types-PyYAML` to the dev extra.
+
+### Removed
+- `SpeculativeDispatcher`, a placeholder that was never instantiated and whose
+  constructor stored a metaclass where a policy belonged.
+
+### Added
 - LLM-backed task classification (`LLMClassifier`). Prompts are classified using
   subscription-backed CLI adapters implementing `Capability.STRUCTURED_COMPLETION`
   and `complete()`. `auto` mode is default: the fast regex heuristic runs first and

@@ -25,7 +25,6 @@ from ..core.models import (
     Task,
 )
 from ..logging import get_logger
-from .policy import SchedulingPolicy
 
 logger = get_logger("scheduler.speculative")
 
@@ -94,21 +93,3 @@ async def race_attempts(
             if not t.done():
                 t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-
-
-class SpeculativeDispatcher(SchedulingPolicy):
-    """A policy that races the top-N candidates per ready task.
-
-    This policy does not actually dispatch — it returns *one* task
-    per ready task, with the rank-1 candidate chosen; the orchestrator
-    is the one that actually runs the race. The point of this class
-    is to be the seam where future "batch the speculative work"
-    strategies plug in: for now the orchestrator still does the
-    dispatch, and the speculative race lives in `race_attempts`.
-    """
-
-    def __init__(self, inner: SchedulingPolicy | None = None) -> None:
-        self._inner = inner or SchedulingPolicy.__class__  # type: ignore[assignment]
-
-    def decide_batch(self, graph) -> list[Task]:
-        return self._inner.decide_batch(graph)  # type: ignore[attr-defined]

@@ -154,6 +154,18 @@ class MemoryConfig:
 
 
 @dataclass(slots=True)
+class PluginsConfig:
+    """Opt-in plugin discovery.
+
+    Off by default so the unconfigured case is unchanged. When on,
+    the orchestrator looks for `coderouter.plugins` entry points
+    on every run; each one may contribute adapters, skills, tools
+    or MCP server configs.
+    """
+    scan: bool = False
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     # SAFE runs unattended, ASK prompts, BLOCK never runs.
     ask_patterns: list[str] = field(default_factory=lambda: [
@@ -177,6 +189,7 @@ class Config:
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     quota_pools: list[QuotaPoolConfig] = field(default_factory=list)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    plugins: PluginsConfig = field(default_factory=PluginsConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
@@ -293,6 +306,8 @@ def load_config(path: Path | None = None) -> Config:
             cfg.quota_pools = _build_quota_pools(value)
         elif key == "memory":
             cfg.memory = _build(MemoryConfig, value, "memory")
+        elif key == "plugins":
+            cfg.plugins = _build(PluginsConfig, value, "plugins")
         elif key == "data_dir":
             cfg.data_dir = Path(str(value)).expanduser()
         elif key == "log_level":
