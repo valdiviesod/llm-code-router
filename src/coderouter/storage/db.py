@@ -117,12 +117,24 @@ def _add_run_integration(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE runs ADD COLUMN integration_detail TEXT")
 
 
+def _add_decision_rejected(conn: sqlite3.Connection) -> None:
+    """Candidates a hard constraint removed, and why.
+
+    Without it `router explain` can only say what was chosen, never what was
+    ruled out — which is the half of a routing decision people actually argue
+    with.
+    """
+    if "rejected" not in _columns(conn, "routing_decisions"):
+        conn.execute("ALTER TABLE routing_decisions ADD COLUMN rejected TEXT")
+
+
 #: Ordered schema migrations. Append only — never renumber, never edit a
 #: migration that has shipped, because existing databases have already run it.
 #: `user_version` records how far a database has got.
 MIGRATIONS: tuple[tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "usage_events.kind", _add_usage_kind),
     (2, "runs.integrated", _add_run_integration),
+    (3, "routing_decisions.rejected", _add_decision_rejected),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]
@@ -193,14 +205,16 @@ class Database:
     def save_decision(self, decision: Any) -> None:
         self.conn.execute(
             "INSERT INTO routing_decisions (task_id, selected_agent, selected_model, mode, "
-            "reason, confidence, estimated_tokens, alternatives, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "reason, confidence, estimated_tokens, alternatives, created_at, rejected) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (decision.task_id, decision.selected_agent, decision.selected_model,
              decision.mode.value, decision.reason, decision.confidence,
              decision.estimated_usage.total_tokens,
              json.dumps([{"agent": c.agent_id, "score": c.score, "reasons": c.reasons}
                          for c in decision.alternatives]),
-             _utc()),
+             _utc(),
+             json.dumps([{"agent": a, "reason": r}
+                         for a, r in getattr(decision, "rejected", [])])),
         )
         self.conn.commit()
 
@@ -380,6 +394,21 @@ class Database:
             "total_tokens": int(row["tokens"]),
             "tasks_by_state": states,
         }
+
+    def decision_for(self, task_id: str) -> sqlite3.Row | None:
+        """The most recent routing decision recorded for a task."""
+        return self.conn.execute(
+            "SELECT * FROM routing_decisions WHERE task_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (task_id,),
+        ).fetchone()
+
+    def runs_for(self, task_id: str) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            "SELECT * FROM runs WHERE task_id = ? ORDER BY created_at", (task_id,)))
+
+    def task_row(self, task_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
 
     def recent_runs(self, limit: int = 20) -> list[sqlite3.Row]:
         # Fetch limit+1 so callers can tell a full page from a truncated one.

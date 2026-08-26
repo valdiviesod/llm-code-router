@@ -12,3 +12,4 @@ not get an ADR.
 | [005](ADR-005-usage-estimation.md) | Estimate usage, label the provenance | Accepted |
 | [006](ADR-006-llm-classification.md) | LLM-backed task classification | Accepted |
 | [006a](ADR-006-weighted-scoring-router.md) | Weighted scoring, not ML | Accepted |
+| [007](ADR-007-worktree-integration.md) | Isolated work is integrated, not discarded | Accepted |

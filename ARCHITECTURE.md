@@ -51,15 +51,20 @@ and may optionally answer out-of-band structured questions (`complete()`) if the
    fingerprint the selection so identical context can be reused.
 3. **Plan** (`core/task_graph.py`) — decompose only if complexity is HIGH or
    above; each subtask is another agent run and another chunk of quota.
-4. **Route** (`routing/engine.py`) — weighted scoring over quota, history, fit
-   and cost, with a hard quota veto.
-5. **Execute** (`agents/…`) — subprocess, isolated in a git worktree when
+4. **Route** (`routing/engine.py`) — hard constraints first (capabilities,
+   context window, provider health, quota veto), then weighted scoring over
+   quota, history, fit and cost. Every rejection is recorded with its reason.
+5. **Reserve** (`usage/reservation.py`) — claim the estimated tokens before
+   executing, so parallel tasks cannot each be granted the same headroom.
+6. **Execute** (`agents/…`) — subprocess, isolated in a git worktree when
    siblings run in parallel.
-6. **Validate** (`validation/engine.py`) — only checks the detected stack
-   supports, only when the tree actually changed.
-7. **Learn** (`storage/db.py`) — per agent × task type × complexity counters that
+7. **Validate** (`validation/engine.py`) — only checks the detected stack
+   supports, only when the tree actually changed, run **inside the worktree**.
+8. **Integrate** (`git/worktree.py`) — merge a passing attempt back, discard a
+   failing one, keep the branch when the merge conflicts.
+9. **Learn** (`storage/db.py`) — per agent × task type × complexity counters that
    feed the next routing decision.
-8. **Escalate** (`core/orchestrator.py`) — on failure, retry once on a *different*
+10. **Escalate** (`core/orchestrator.py`) — on failure, retry once on a *different*
    agent with a compact `HandoffPackage`, never the same prompt twice.
 
 ## Component docs

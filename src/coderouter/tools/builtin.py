@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core.models import Risk
 from ..security.policy import CommandPolicy, Decision
 from .models import Tool
 
@@ -31,7 +32,7 @@ def builtin_tools() -> list[Tool]:
                 "Files in vendor dirs (node_modules, .venv, etc.) are rejected."
             ),
             kind="read",
-            risk="low",  # type: ignore[arg-type]
+            risk=Risk.LOW,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -50,7 +51,7 @@ def builtin_tools() -> list[Tool]:
                 "up to N matches with file:line:column anchors."
             ),
             kind="search",
-            risk="low",  # type: ignore[arg-type]
+            risk=Risk.LOW,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -71,7 +72,7 @@ def builtin_tools() -> list[Tool]:
                 "shell commands or paths outside the project root."
             ),
             kind="write",
-            risk="medium",  # type: ignore[arg-type]
+            risk=Risk.MEDIUM,
             input_schema={
                 "type": "object",
                 "properties": {
@@ -92,7 +93,7 @@ def builtin_tools() -> list[Tool]:
                 "executed, ASK commands require user approval, SAFE commands run."
             ),
             kind="shell",
-            risk="high",  # type: ignore[arg-type]
+            risk=Risk.HIGH,
             input_schema={
                 "type": "object",
                 "properties": {"command": {"type": "string"}},

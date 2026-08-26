@@ -161,6 +161,12 @@ router --mode economy "generate unit tests for user service"
 # Force a specific agent adapter
 router --agent claude "refactor orchestrator state machine"
 
+# Dry run: everything the router would decide, executing nothing
+router plan "add rate limiting to the API"
+
+# Why a past task was routed that way
+router explain task_b71d6cc6a1e5
+
 # Inspect system status and token usage
 router status
 
@@ -169,6 +175,18 @@ router agents
 
 # View token consumption and estimated quota windows
 router usage
+
+# Quota pools: spent, reserved by runs in flight, remaining
+router quota
+
+# Recent runs, showing whether each landed or was stranded
+router history -n 20
+
+# Models, skills, tools, and MCP servers
+router models
+router skills
+router tools
+router mcp --probe
 
 # Run diagnostic health check
 router doctor
