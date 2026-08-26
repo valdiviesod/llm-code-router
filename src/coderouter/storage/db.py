@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from ..logging import get_logger
+
+logger = get_logger("storage.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -84,6 +88,58 @@ def _utc() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _add_usage_kind(conn: sqlite3.Connection) -> None:
+    """Record what a usage event was spent on (a run, a classification, ...).
+
+    Guarded because installs that predate the migration framework already ran
+    this as an ad-hoc `ALTER TABLE` with `user_version` still at 0.
+    """
+    if "kind" not in _columns(conn, "usage_events"):
+        conn.execute(
+            "ALTER TABLE usage_events ADD COLUMN kind TEXT NOT NULL DEFAULT 'run'"
+        )
+
+
+def _add_run_integration(conn: sqlite3.Connection) -> None:
+    """Whether an isolated run's work actually reached the project tree.
+
+    A run that succeeded but whose branch could not be merged is not the same
+    as a run that landed, and the history was unable to tell them apart.
+    """
+    cols = _columns(conn, "runs")
+    if "integrated" not in cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN integrated INTEGER")
+    if "integration_detail" not in cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN integration_detail TEXT")
+
+
+def _add_decision_rejected(conn: sqlite3.Connection) -> None:
+    """Candidates a hard constraint removed, and why.
+
+    Without it `router explain` can only say what was chosen, never what was
+    ruled out — which is the half of a routing decision people actually argue
+    with.
+    """
+    if "rejected" not in _columns(conn, "routing_decisions"):
+        conn.execute("ALTER TABLE routing_decisions ADD COLUMN rejected TEXT")
+
+
+#: Ordered schema migrations. Append only — never renumber, never edit a
+#: migration that has shipped, because existing databases have already run it.
+#: `user_version` records how far a database has got.
+MIGRATIONS: tuple[tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
+    (1, "usage_events.kind", _add_usage_kind),
+    (2, "runs.integrated", _add_run_integration),
+    (3, "routing_decisions.rejected", _add_decision_rejected),
+)
+
+SCHEMA_VERSION = MIGRATIONS[-1][0]
+
+
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,12 +149,33 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
-        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(usage_events)")}
-        if "kind" not in cols:
-            self.conn.execute(
-                "ALTER TABLE usage_events ADD COLUMN kind TEXT NOT NULL DEFAULT 'run'"
-            )
+        self.migrate()
+
+    # --- schema ---------------------------------------------------------
+
+    @property
+    def schema_version(self) -> int:
+        row = self.conn.execute("PRAGMA user_version").fetchone()
+        return int(row[0])
+
+    def migrate(self) -> list[str]:
+        """Bring the database up to `SCHEMA_VERSION`, returning what was applied.
+
+        Migrations are additive by policy: they add columns and tables, never
+        drop or rewrite them. An upgrade must never destroy a user's history.
+        """
+        applied: list[str] = []
+        current = self.schema_version
+        for version, name, step in MIGRATIONS:
+            if version <= current:
+                continue
+            step(self.conn)
+            # PRAGMA does not take a parameter binding.
+            self.conn.execute(f"PRAGMA user_version = {int(version)}")
             self.conn.commit()
+            applied.append(f"{version}: {name}")
+            logger.info("applied schema migration %d (%s)", version, name)
+        return applied
 
     def close(self) -> None:
         self.conn.close()
@@ -128,27 +205,36 @@ class Database:
     def save_decision(self, decision: Any) -> None:
         self.conn.execute(
             "INSERT INTO routing_decisions (task_id, selected_agent, selected_model, mode, "
-            "reason, confidence, estimated_tokens, alternatives, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "reason, confidence, estimated_tokens, alternatives, created_at, rejected) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (decision.task_id, decision.selected_agent, decision.selected_model,
              decision.mode.value, decision.reason, decision.confidence,
              decision.estimated_usage.total_tokens,
              json.dumps([{"agent": c.agent_id, "score": c.score, "reasons": c.reasons}
                          for c in decision.alternatives]),
-             _utc()),
+             _utc(),
+             json.dumps([{"agent": a, "reason": r}
+                         for a, r in getattr(decision, "rejected", [])])),
         )
         self.conn.commit()
 
-    def save_run(self, run_id: str, task: Any, result: Any) -> None:
+    def save_run(self, run_id: str, task: Any, result: Any,
+                 integration: Any = None) -> None:
+        """Persist one run. `integration` is the `IntegrationResult` for an
+        isolated run, so history can tell work that landed from work that
+        merely succeeded in a worktree that was then thrown away."""
         now = _utc()
+        integrated = None if integration is None else int(integration.merged)
+        detail = None if integration is None else integration.detail[:500]
         self.conn.execute(
             "INSERT INTO runs (id, task_id, agent_id, model, attempt, success, duration_s, "
             "input_tokens, output_tokens, cost_usd, usage_status, error, output_summary, "
-            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "created_at, integrated, integration_detail) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (run_id, task.id, result.agent_id, result.model, task.attempt,
              int(result.success), result.duration_s, result.input_tokens,
              result.output_tokens, result.cost_usd, result.usage_status.value,
-             result.error, result.output[:2000], now),
+             result.error, result.output[:2000], now, integrated, detail),
         )
         self.record_usage(
             result.agent_id, result.total_tokens, result.usage_status.value,
@@ -308,6 +394,21 @@ class Database:
             "total_tokens": int(row["tokens"]),
             "tasks_by_state": states,
         }
+
+    def decision_for(self, task_id: str) -> sqlite3.Row | None:
+        """The most recent routing decision recorded for a task."""
+        return self.conn.execute(
+            "SELECT * FROM routing_decisions WHERE task_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (task_id,),
+        ).fetchone()
+
+    def runs_for(self, task_id: str) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            "SELECT * FROM runs WHERE task_id = ? ORDER BY created_at", (task_id,)))
+
+    def task_row(self, task_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
 
     def recent_runs(self, limit: int = 20) -> list[sqlite3.Row]:
         # Fetch limit+1 so callers can tell a full page from a truncated one.

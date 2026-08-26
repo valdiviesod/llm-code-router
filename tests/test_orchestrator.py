@@ -50,3 +50,24 @@ async def test_analyze_populates_classification(orchestrator, tmp_path: Path):
     task = await orchestrator.analyze("fix the login auth bug", tmp_path)
     assert task.task_type == "security"
     assert any(p.name == "auth.py" for p in task.context_files)
+
+
+async def test_speculative_dispatch_returns_a_real_outcome(orchestrator, db, tmp_path):
+    """Regression: the speculative path used to import a non-existent
+    `TaskOutcome` from `.models` and crash, and re-persisted the winning
+    run a second time, double-counting its tokens against the quota."""
+    orchestrator.speculative_config.enabled = True
+    task = Task(prompt="tiny tweak", complexity=Complexity.LOW, project_root=tmp_path)
+
+    outcome = await orchestrator._dispatch_task(
+        task, mode_override=None, isolate=False, on_event=None,
+    )
+
+    assert outcome.result.success
+    assert outcome.task.state is TaskState.DONE
+    metrics = db.dashboard_metrics()
+    # However many attempts got far enough to finish, each is on the books
+    # exactly once. The winner used to be persisted twice, so its tokens were
+    # counted twice against the quota.
+    assert 1 <= metrics["runs"] <= 2
+    assert metrics["total_tokens"] == metrics["runs"] * 1000

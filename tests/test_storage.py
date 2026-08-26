@@ -119,3 +119,66 @@ def test_audit_log_records_decisions(db):
     db.audit("execute", task_id="t1", agent_id="claude", decision="cheapest capable")
     row = db.conn.execute("SELECT * FROM audit_log").fetchone()
     assert row["action"] == "execute" and row["agent_id"] == "claude"
+
+
+def test_schema_version_is_stamped_on_a_fresh_database(tmp_path):
+    from coderouter.storage.db import SCHEMA_VERSION, Database
+    db = Database(tmp_path / "fresh.db")
+    assert db.schema_version == SCHEMA_VERSION
+    db.close()
+
+
+def test_migrations_are_idempotent(tmp_path):
+    from coderouter.storage.db import SCHEMA_VERSION, Database
+    path = tmp_path / "again.db"
+    db = Database(path)
+    db.close()
+    db = Database(path)
+    assert db.migrate() == [], "a database at the current version applies nothing"
+    assert db.schema_version == SCHEMA_VERSION
+    db.close()
+
+
+def test_upgrade_preserves_existing_rows(tmp_path):
+    """An upgrade must never destroy a user's history."""
+    import sqlite3
+
+    from coderouter.storage.db import SCHEMA, SCHEMA_VERSION, Database
+
+    path = tmp_path / "legacy.db"
+    # A pre-migration-framework database: schema present, user_version still 0,
+    # and the ad-hoc `kind` column already applied by the old __init__.
+    raw = sqlite3.connect(path)
+    raw.executescript(SCHEMA)
+    raw.execute("INSERT INTO usage_events (agent_id, tokens, status, occurred_at) "
+                "VALUES ('claude', 4242, 'confirmed', '2026-01-01T00:00:00+00:00')")
+    raw.commit()
+    assert raw.execute("PRAGMA user_version").fetchone()[0] == 0
+    raw.close()
+
+    db = Database(path)
+    assert db.schema_version == SCHEMA_VERSION
+    row = db.conn.execute("SELECT SUM(tokens) AS t FROM usage_events").fetchone()
+    assert row["t"] == 4242, "existing usage history must survive the upgrade"
+    cols = {r["name"] for r in db.conn.execute("PRAGMA table_info(runs)")}
+    assert {"integrated", "integration_detail"} <= cols
+    db.close()
+
+
+def test_run_records_whether_its_work_was_integrated(tmp_path, db):
+    from coderouter.core.models import AgentResult, Task, UsageStatus
+    from coderouter.git.worktree import IntegrationResult
+
+    task = Task(prompt="x")
+    result = AgentResult(task_id=task.id, agent_id="fake", model=None, success=True,
+                         output="ok", usage_status=UsageStatus.CONFIRMED)
+    db.save_run("run_merged", task, result,
+                IntegrationResult(merged=True, detail="merged"))
+    db.save_run("run_stranded", task, result,
+                IntegrationResult(merged=False, conflicted=True, detail="conflict"))
+
+    rows = {r["id"]: r for r in db.conn.execute(
+        "SELECT id, integrated, integration_detail FROM runs")}
+    assert rows["run_merged"]["integrated"] == 1
+    assert rows["run_stranded"]["integrated"] == 0
+    assert "conflict" in rows["run_stranded"]["integration_detail"]

@@ -32,6 +32,32 @@ DEFAULT_DATA_DIR = Path(
 
 
 @dataclass(slots=True)
+class MCPServerConfig:
+    name: str = ""
+    command: str = ""
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class QuotaPoolConfig:
+    """A pool aggregates quota across one or more agent ids.
+
+    An empty config preserves the v0.1.0 behaviour: each agent has
+    its own implicit pool sized by `AgentConfig.window_limit_tokens`.
+    """
+    id: str = ""
+    kind: str = "subscription"
+    tier: str = "standard"
+    agent_ids: list[str] = field(default_factory=list)
+    window_hours: float = 5.0
+    limit_tokens: int | None = None
+    weekly_limit_tokens: int | None = None
+    reserve_percent: float = 15.0
+    enabled: bool = True
+
+
+@dataclass(slots=True)
 class AgentConfig:
     enabled: bool = True
     command: str = ""
@@ -48,6 +74,8 @@ class AgentConfig:
     reserve_percent: float = 15.0
     extra_args: list[str] = field(default_factory=list)
     timeout_s: int = 1800
+    mcp_servers: list[MCPServerConfig] = field(default_factory=list)
+    tool_budget_tokens: int = 600
 
 
 CLASSIFIER_MODES = ("heuristic", "auto", "llm")
@@ -71,6 +99,9 @@ class RoutingConfig:
     classifier_cache_hours: int = 168
     classifier_max_chars: int = 2000
     classifier_timeout_s: int = 120
+    # Speculative dispatch: when on, MEDIUM/LOW tasks race two agents and
+    # accept the first success. Off by default. See scheduler/speculative.py.
+    speculative: bool = False
 
 
 @dataclass(slots=True)
@@ -85,6 +116,53 @@ class TokenSavingConfig:
 class ConcurrencyConfig:
     globally: int = 2
     per_agent: int = 1
+
+
+@dataclass(slots=True)
+class SkillsConfig:
+    """Skill discovery and injection.
+
+    Search paths are resolved in order, project first, then user-global, then
+    a packaged defaults directory. A project skill with the same `name` as a
+    global one wins.
+    """
+
+    enabled: bool = True
+    project_search_path: Path = field(default_factory=lambda: Path(".coderouter/skills"))
+    user_search_path: Path = field(
+        default_factory=lambda: Path.home() / ".config" / "coderouter" / "skills"
+    )
+    budget_tokens: int = 800
+    # Per-agent allow/deny by skill name. Empty allowlist means "any".
+    per_agent: dict[str, AgentSkillConfig] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AgentSkillConfig:
+    allowlist: list[str] = field(default_factory=list)
+    denylist: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class MemoryConfig:
+    enabled: bool = True
+    auto_learn: bool = True
+    budget_tokens: int = 600
+    min_samples: int = 5
+    success_threshold: float = 0.85
+    failure_threshold: float = 0.4
+
+
+@dataclass(slots=True)
+class PluginsConfig:
+    """Opt-in plugin discovery.
+
+    Off by default so the unconfigured case is unchanged. When on,
+    the orchestrator looks for `coderouter.plugins` entry points
+    on every run; each one may contribute adapters, skills, tools
+    or MCP server configs.
+    """
+    scan: bool = False
 
 
 @dataclass(slots=True)
@@ -108,6 +186,10 @@ class Config:
     token_saving: TokenSavingConfig = field(default_factory=TokenSavingConfig)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)
+    quota_pools: list[QuotaPoolConfig] = field(default_factory=list)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+    plugins: PluginsConfig = field(default_factory=PluginsConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
@@ -121,6 +203,9 @@ class Config:
 
     def agent(self, agent_id: str) -> AgentConfig:
         return self.agents.get(agent_id, AgentConfig())
+
+    def agent_skill_config(self, agent_id: str) -> AgentSkillConfig:
+        return self.skills.per_agent.get(agent_id, AgentSkillConfig())
 
 
 def _build(cls: type, data: Any, path: str) -> Any:
@@ -140,6 +225,42 @@ def _build(cls: type, data: Any, path: str) -> Any:
             value = Path(value).expanduser()
         kwargs[key] = value
     return cls(**kwargs)
+
+
+def _build_skills_config(data: Any) -> SkillsConfig:
+    """Skills config needs its own builder because the `per_agent` mapping
+    has string keys (agent ids) but the values are dataclass instances.
+    """
+    if not isinstance(data, dict):
+        raise ConfigError("skills: expected mapping")
+    known = {f.name: f for f in fields(SkillsConfig)}
+    kwargs: dict[str, Any] = {}
+    for raw_key, value in data.items():
+        if raw_key not in known:
+            raise ConfigError(f"skills.{raw_key}: unknown option")
+        if raw_key == "per_agent":
+            if not isinstance(value, dict):
+                raise ConfigError("skills.per_agent: expected mapping of agent id -> rules")
+            kwargs[raw_key] = {
+                aid: _build(AgentSkillConfig, sub, f"skills.per_agent.{aid}")
+                for aid, sub in value.items()
+            }
+        elif known[raw_key].type is Path or known[raw_key].type == "Path":
+            kwargs[raw_key] = Path(value).expanduser()
+        else:
+            kwargs[raw_key] = value
+    return SkillsConfig(**kwargs)
+
+
+def _build_quota_pools(data: Any) -> list[QuotaPoolConfig]:
+    if not isinstance(data, list):
+        raise ConfigError("quota_pools: expected list of pool definitions")
+    out: list[QuotaPoolConfig] = []
+    for i, entry in enumerate(data):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"quota_pools[{i}]: expected mapping")
+        out.append(_build(QuotaPoolConfig, entry, f"quota_pools[{i}]"))
+    return out
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -179,6 +300,14 @@ def load_config(path: Path | None = None) -> Config:
             cfg.concurrency = _build(ConcurrencyConfig, value, "concurrency")
         elif key == "security":
             cfg.security = _build(SecurityConfig, value, "security")
+        elif key == "skills":
+            cfg.skills = _build_skills_config(value)
+        elif key == "quota_pools":
+            cfg.quota_pools = _build_quota_pools(value)
+        elif key == "memory":
+            cfg.memory = _build(MemoryConfig, value, "memory")
+        elif key == "plugins":
+            cfg.plugins = _build(PluginsConfig, value, "plugins")
         elif key == "data_dir":
             cfg.data_dir = Path(str(value)).expanduser()
         elif key == "log_level":

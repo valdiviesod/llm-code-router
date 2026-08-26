@@ -10,6 +10,7 @@ import asyncio
 import shutil
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from ...config import AgentConfig
 from ...core.models import (
@@ -23,6 +24,9 @@ from ...core.models import (
     UsageInfo,
     UsageStatus,
 )
+
+if TYPE_CHECKING:
+    from ...tools.models import Tool
 
 # Rough bytes-per-token used only for pre-flight estimates. Real numbers always
 # come back from the provider's own reported usage after a run.
@@ -116,6 +120,13 @@ class AgentAdapter(ABC):
     ) -> AgentResult:
         """Run the task to completion. Must never raise for provider-side
         failures: return AgentResult(success=False, error=...) instead."""
+
+    async def tools(self) -> list["Tool"]:  # noqa: UP037 - forward ref to TYPE_CHECKING
+        """Native tools the agent can invoke. Empty by default; adapters that
+        expose a tool-selection surface override this. The orchestrator unions
+        the result with the builtin tools and any MCP-discovered tools.
+        """
+        return []
 
     async def cancel(self, task_id: str) -> None:
         proc = self._running.pop(task_id, None)

@@ -116,3 +116,78 @@ def test_tiers_ignored_without_model_selection_capability(orchestrator):
     # FakeAdapter declares only CODE_EDIT and SHELL, so it cannot pick models.
     assert orchestrator.router._model_for(
         adapter, Task(prompt="x"), RoutingMode.BALANCED) == "fallback"
+
+
+async def test_unhealthy_agent_is_rejected_before_scoring(orchestrator, adapters):
+    """A provider that is down burns an attempt and a retry for a guaranteed
+    failure. It is a hard constraint, not a low score."""
+    from coderouter.core.models import HealthStatus
+
+    async def _down():
+        return HealthStatus("fake", healthy=False, detail="not logged in")
+
+    adapters[0].health_check = _down
+    decision = await orchestrator.router.decide(Task(prompt="anything"))
+
+    assert decision.selected_agent == "other"
+    assert ("fake", "unhealthy: not logged in") in decision.rejected
+
+
+async def test_agent_whose_context_window_is_too_small_is_rejected(config, db):
+    from conftest import FakeAdapter, FakeRegistry
+
+    from coderouter.core.models import AgentCapabilities, UsageEstimate
+    from coderouter.core.orchestrator import Orchestrator
+
+    class NarrowAdapter(FakeAdapter):
+        @property
+        def capabilities(self):
+            return AgentCapabilities(self._caps, max_context_tokens=10)
+
+        async def estimate(self, task):
+            return UsageEstimate(input_tokens=50_000, output_tokens=1_000)
+
+    adapters = [NarrowAdapter(config, "fake"), FakeAdapter(config, "other")]
+    router = Orchestrator(config, db, FakeRegistry(adapters)).router
+
+    decision = await router.decide(Task(prompt="huge repo"))
+    assert decision.selected_agent == "other"
+    assert any("context window is 10" in why for _aid, why in decision.rejected)
+
+
+async def test_health_probe_failure_does_not_veto(orchestrator, adapters):
+    """If our own check breaks, trying is better than refusing to route."""
+    async def _boom():
+        raise RuntimeError("probe exploded")
+
+    adapters[0].health_check = _boom
+    adapters[1].health_check = _boom
+    decision = await orchestrator.router.decide(Task(prompt="anything"))
+    assert decision.selected_agent in {"fake", "other"}
+
+
+async def test_health_is_cached_across_decisions(orchestrator, adapters):
+    from coderouter.core.models import HealthStatus
+
+    calls = []
+
+    async def _counted():
+        calls.append(1)
+        return HealthStatus("fake", healthy=True, detail="ok")
+
+    adapters[0].health_check = _counted
+    await orchestrator.router.decide(Task(prompt="one"))
+    await orchestrator.router.decide(Task(prompt="two"))
+    assert len(calls) == 1, "health is a subprocess call; probe it once per TTL"
+
+
+async def test_rejections_are_reported_when_nothing_survives(orchestrator, adapters):
+    from coderouter.core.models import HealthStatus
+
+    async def _down():
+        return HealthStatus("x", healthy=False, detail="offline")
+
+    for adapter in adapters:
+        adapter.health_check = _down
+    with pytest.raises(NoViableAgent, match="offline"):
+        await orchestrator.router.decide(Task(prompt="anything"))

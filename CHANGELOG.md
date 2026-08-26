@@ -6,6 +6,79 @@ The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `router plan "<prompt>"` — a dry run that classifies, decomposes and asks the
+  routing engine for a real decision per task, printing the graph, the winning
+  candidate with its named score contributions, the rejected candidates with
+  their reasons, the token estimate and the parallelism, then stops. It executes
+  nothing and reserves no quota; classification itself can still spend, and the
+  help text says so.
+- `router explain <task-id>` — why a past task was routed that way, what was
+  rejected, and whether each run's work was actually integrated.
+- `router quota`, `router models`, `router skills`, `router tools`,
+  `router mcp [--probe]`, `router history`.
+- Hard routing constraints applied before scoring: provider health (probed
+  through a 60s TTL cache) and context window size. Every rejection is recorded
+  on the `RoutingDecision` as `(agent_id, reason)`, so `NoViableAgent` says what
+  was ruled out instead of being a black box.
+- Versioned schema migrations gated on `PRAGMA user_version`, additive by
+  policy. `runs.integrated` / `runs.integration_detail` record whether an
+  isolated run's work reached the project tree; `routing_decisions.rejected`
+  records what was ruled out.
+- `router doctor` now probes rather than assumes: it creates and removes a real
+  worktree, reports leftover worktrees and unmerged `coderouter/*` branches,
+  checks the schema version, counts skills and tools, warns when no command
+  block patterns are configured, and completes an MCP handshake against every
+  configured server.
+- **Quota reservations** (`usage/reservation.py`). `QuotaBook.reserve()` /
+  `commit()` / `release()` claim a task's estimated tokens before it runs, so
+  parallel tasks cannot each be granted the same remaining headroom. Outstanding
+  reservations count towards quota pressure; `run_task` releases the hold on
+  cancellation and commits it once the usage event is written.
+- MCP `initialize` handshake and response-id correlation in `MCPClient`, plus
+  the first end-to-end tests for it against a real stdio subprocess.
+
+### Fixed
+- **Isolated runs destroyed their own work.** `isolated()` created a worktree,
+  let the agent write into it, then removed it with `--force`, discarding every
+  uncommitted change; `merge()` had no callers and the per-attempt branch was
+  never deleted. Parallel graph execution and every speculative race therefore
+  produced no file changes at all. Isolation now ends in `integrate()` or an
+  explicit discard — see [ADR-007](docs/adr/ADR-007-worktree-integration.md).
+  A conflicted merge is aborted, the project tree restored, and the branch kept,
+  because it is the only copy of that work. A dirty project tree refuses the
+  merge instead of landing on top of a human's edits.
+- Validation ran against the project root even when the run was isolated, so it
+  always saw an unchanged tree and silently skipped every check. It now runs
+  inside the worktree, before the merge.
+- Escalation dropped `isolate` and `mode_override`, so a retry after a failed
+  isolated run wrote straight into the shared project tree — two agents in one
+  working tree, which ADR-004 forbids.
+- Builtin tools declared `risk="low"` as a string against a `Risk`-typed field,
+  with `# type: ignore[arg-type]` suppressing exactly the error that would have
+  caught it. `router tools` crashed on the first one.
+- Secret redaction missed `sk-ant-`, most of the GitHub token family,
+  fine-grained PATs, Google and Slack keys, JWTs, `Authorization: Bearer`,
+  credentials embedded in URLs, and PEM private key blocks.
+- Speculative dispatch was dead on arrival: it imported `TaskOutcome` from the
+  wrong module and copied a slots dataclass through `__dict__`, so enabling
+  `routing.speculative` crashed on the first eligible task. It also re-persisted
+  the winning run, double-counting its tokens against the quota. The winning
+  attempt's real outcome — checks and handoff included — is now returned intact.
+- `MCPClient` sent `tools/list` before `initialize`, which a conformant MCP
+  server is entitled to reject, and treated the next line on stdout as the
+  response even when it was server chatter or a notification.
+- The orchestrator built its `QuotaBook` from a fresh `AgentRegistry` instead of
+  the live one, so an injected or plugin-provided adapter got no quota pools and
+  its usage escaped accounting entirely.
+- `mypy src/coderouter` is clean again (it was reporting 9 errors, two of them
+  real crashes). A stray `src/__init__.py` made every module resolvable under two
+  names; added a `py.typed` marker and `types-PyYAML` to the dev extra.
+
+### Removed
+- `SpeculativeDispatcher`, a placeholder that was never instantiated and whose
+  constructor stored a metaclass where a policy belonged.
+
+### Added
 - LLM-backed task classification (`LLMClassifier`). Prompts are classified using
   subscription-backed CLI adapters implementing `Capability.STRUCTURED_COMPLETION`
   and `complete()`. `auto` mode is default: the fast regex heuristic runs first and

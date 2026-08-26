@@ -11,10 +11,38 @@ from enum import Enum
 
 from ..config import SecurityConfig
 
-_SECRET_RE = re.compile(
-    r"(sk-[A-Za-z0-9_\-]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|"
-    r"(?i:(?:api[_-]?key|token|password|secret)\s*[:=]\s*)\S{8,})"
+# Ordered because the specific patterns must win over the generic key=value one.
+# Every pattern here was chosen for a credential that a coding agent plausibly
+# prints: provider keys, VCS tokens, cloud keys, and anything a shell would
+# expose through `env`. Over-redaction is the intended failure mode.
+_SECRET_PATTERNS: tuple[str, ...] = (
+    # PEM private keys — the whole block, not just the header.
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+    # Anthropic, OpenAI and the sk- family.
+    r"sk-ant-[A-Za-z0-9_\-]{16,}",
+    r"sk-[A-Za-z0-9_\-]{16,}",
+    # GitHub: personal, OAuth, user-to-server, server-to-server, refresh, fine-grained.
+    r"gh[pousr]_[A-Za-z0-9]{20,}",
+    r"github_pat_[A-Za-z0-9_]{20,}",
+    # Google / Firebase.
+    r"AIza[0-9A-Za-z_\-]{35}",
+    # Slack.
+    r"xox[abposr]-[A-Za-z0-9\-]{10,}",
+    # AWS access key ids, and secret keys when they are labelled.
+    r"(?:AKIA|ASIA)[0-9A-Z]{16}",
+    r"(?i:aws_secret_access_key\s*[:=]\s*)\S{20,}",
+    # JSON Web Tokens.
+    r"eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}",
+    # Authorization headers.
+    r"(?i:bearer\s+)[A-Za-z0-9._\-]{20,}",
+    # Credentials embedded in a URL: scheme://user:secret@host
+    r"(?i:[a-z][a-z0-9+.\-]*://)[^\s:/@]+:[^\s/@]+@",
+    # Generic labelled secrets, last so the specific forms above win.
+    r"(?i:(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|secret)"
+    r"\s*[:=]\s*)[\"']?\S{8,}",
 )
+
+_SECRET_RE = re.compile("|".join(f"(?:{p})" for p in _SECRET_PATTERNS))
 
 
 class Decision(str, Enum):

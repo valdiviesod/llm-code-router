@@ -29,6 +29,39 @@ safe      = projected <= usable
 An unsafe forecast vetoes the candidate. The reserve is only spent on CRITICAL
 tasks or an explicit user override.
 
+## Reservations
+
+Committed usage is derived from SQL, and a usage event only exists *after* a run
+finishes. Between the routing decision and that event, the tokens are spoken for
+but invisible. With `concurrency.globally > 1` that window is a real overspend:
+two tasks each see 30k remaining, each estimates 20k, both proceed.
+
+`QuotaLedger` closes it by making intent visible:
+
+```
+available = limit - committed(SQL) - outstanding_reservations
+```
+
+```
+reserve()  ->  execute  ->  commit(actual)     # or release() if it never ran
+```
+
+`QuotaBook.reserve()` performs the affordability check and the hold under one
+lock, so two racing callers cannot both be granted the last of a pool's
+headroom. Outstanding reservations also count towards `pressure()`, so in-flight
+work influences routing the same way spent tokens do. `run_task` releases the
+hold if the attempt is cancelled or raises, and commits it once the run is on
+the books; committing above the estimate logs a warning, because systematic
+under-estimation is how a reserve gets breached even with reservations in place.
+
+A pool with no configured limit is still reserved against — the total stays
+visible — but it never blocks, because an unknown limit yields no fraction to
+compare against.
+
+**Limitation** Reservations are held in the `router` process. Two `router`
+processes sharing one subscription still race. The upgrade path is a
+`reservations` table behind the same API; no caller would change.
+
 ## Conservation mode
 
 When **every** agent with a known limit is at or above 75% of its window, the

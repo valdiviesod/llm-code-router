@@ -206,6 +206,12 @@ class Task:
     created_at: datetime = field(default_factory=_now)
     classification_source: str = "heuristic"
     classification_confidence: float = 0.5
+    # Skills selected for this task by SkillInjector. Set on the task by the
+    # orchestrator before the agent call so the adapter and the audit log can
+    # see exactly which guidance was applied.
+    skill_ids: list[str] = field(default_factory=list)
+    # Tools the agent may call for this task. Populated by ToolSelector.
+    selected_tool_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -257,6 +263,11 @@ class RoutingDecision:
     risk: Risk
     mode: RoutingMode
     conservation: bool = False
+    quota_pool: str | None = None
+    #: (agent_id, reason) for every candidate a hard constraint removed before
+    #: scoring. Routing is never a black box: what was rejected, and why, is
+    #: part of the decision.
+    rejected: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
