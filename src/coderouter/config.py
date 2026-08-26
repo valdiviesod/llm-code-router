@@ -32,6 +32,14 @@ DEFAULT_DATA_DIR = Path(
 
 
 @dataclass(slots=True)
+class MCPServerConfig:
+    name: str = ""
+    command: str = ""
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class AgentConfig:
     enabled: bool = True
     command: str = ""
@@ -48,6 +56,8 @@ class AgentConfig:
     reserve_percent: float = 15.0
     extra_args: list[str] = field(default_factory=list)
     timeout_s: int = 1800
+    mcp_servers: list[MCPServerConfig] = field(default_factory=list)
+    tool_budget_tokens: int = 600
 
 
 CLASSIFIER_MODES = ("heuristic", "auto", "llm")

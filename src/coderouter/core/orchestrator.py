@@ -24,6 +24,7 @@ from ..routing.llm_classifier import LLMClassifier
 from ..security.policy import redact_secrets
 from ..skills import SkillConfig, SkillInjector, SkillRegistry
 from ..storage.db import Database
+from ..tools import MCPServer, ToolRegistry, ToolSelector
 from ..usage.manager import UsageManager
 from ..validation.engine import CheckResult, ValidationEngine
 from .models import (
@@ -66,6 +67,8 @@ class Orchestrator:
         self.skill_injector = SkillInjector(
             budget_tokens=config.skills.budget_tokens
         )
+        self.tool_registry = ToolRegistry()
+        self.tool_selector = ToolSelector(self.tool_registry)
 
     @staticmethod
     def _load_skill_registry(
@@ -136,6 +139,7 @@ class Orchestrator:
         self.db.save_task(task)
 
         self._inject_skills(task, adapter)
+        await self._select_tools(task, adapter)
         self.db.save_task(task)
 
         worktrees = WorktreeManager(task.project_root)
@@ -213,6 +217,40 @@ class Orchestrator:
         task.skill_ids = list(block.skill_ids)
         log(logger, logging.INFO, "skills applied", task_id=task.id,
             agent_id=adapter.id, skills=",".join(block.skill_ids))
+
+    async def _select_tools(self, task: Task, adapter) -> None:
+        """Pick a budgeted set of tools for this task and adapter.
+
+        Discovers MCP server tools first (best-effort), then runs the
+        selector. The chosen tool ids are recorded on the task; the
+        full tool list is not persisted at this point because the
+        adapter is what actually decides which tools to advertise in
+        its prompt — the router's job is just to keep the picker honest.
+        """
+        agent_cfg = self.config.agent(adapter.id)
+        for server_cfg in agent_cfg.mcp_servers:
+            self.tool_registry.register_mcp_server(MCPServer(
+                name=server_cfg.name,
+                command=server_cfg.command,
+                args=tuple(server_cfg.args),
+                env=dict(server_cfg.env),
+            ))
+        discovered: list = []
+        if self.tool_registry.mcp_servers:
+            grouped = await self.tool_registry.list_mcp_tools()
+            for tools in grouped.values():
+                discovered.extend(tools)
+        native = await adapter.tools()
+        if native:
+            self.tool_registry.register_adapter(adapter, native)
+        chosen = self.tool_selector.select(
+            adapter, task, budget_tokens=agent_cfg.tool_budget_tokens,
+            discovered=discovered,
+        )
+        task.selected_tool_ids = [t.name for t in chosen]
+        if chosen:
+            log(logger, logging.INFO, "tools selected", task_id=task.id,
+                agent_id=adapter.id, tools=",".join(t.name for t in chosen))
 
     async def _self_heal(
         self, task: Task, outcome: TaskOutcome, *, on_event: Event | None
