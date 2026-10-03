@@ -69,8 +69,8 @@ async def test_weights_sum_to_one():
         assert abs(sum(weights.values()) - 1.0) < 1e-9, mode
 
 
-async def test_decision_is_persisted(orchestrator, db):
-    await orchestrator.run_task(Task(prompt="do it"))
+async def test_decision_is_persisted(orchestrator, db, tmp_path):
+    await orchestrator.run_task(Task(prompt="do it", project_root=tmp_path))
     row = db.conn.execute("SELECT COUNT(*) AS n FROM routing_decisions").fetchone()
     assert row["n"] >= 1
 

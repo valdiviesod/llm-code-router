@@ -13,6 +13,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..tools.output_bounds import bound_output
+
 
 @dataclass(slots=True)
 class CheckResult:
@@ -78,7 +80,8 @@ class TestingEngine:
                     continue
                 code, out, err = await self._exec(argv, root)
                 results.append(CheckResult(
-                    name, code == 0, detail=(err or out)[-2000:]
+                    name, code == 0,
+                    detail=bound_output(err or out, "tests", 2_000)
                 ))
         return results
 

@@ -181,6 +181,8 @@ async def cmd_plan(args: argparse.Namespace) -> int:
             for agent_id, why in decision.rejected:
                 print(f"    {RED}x {agent_id}: {why}{RESET}")
             print(f"    {DIM}estimate: {decision.estimated_usage.total_tokens} tokens"
+                  f" [{decision.estimated_usage.source}, "
+                  f"confidence {decision.estimated_usage.confidence:.0%}]"
                   f" (pool {decision.quota_pool or 'none'}){RESET}")
 
         ready = orch.scheduling_policy.decide_batch(graph)
@@ -335,6 +337,9 @@ async def cmd_tools(args: argparse.Namespace) -> int:
     config, db = _bootstrap(args)
     orch = Orchestrator(config, db)
     registry = orch.tool_registry
+    print(f"{DIM}builtin tools are executable: served to agents over the MCP"
+          f" bridge (`router mcp-serve`), gated by permissions + policy +"
+          f" sandbox{RESET}")
     groups: list[tuple[str, list]] = [("builtin", registry.builtin)]
     groups += [(f"adapter:{aid}", tools)
                for aid, tools in registry.adapter_tools.items()]
@@ -351,6 +356,21 @@ async def cmd_tools(args: argparse.Namespace) -> int:
         print(f"{DIM}plus MCP-discovered tools; run `router mcp --probe`{RESET}")
     db.close()
     return 0
+
+
+async def cmd_mcp_serve(args: argparse.Namespace) -> int:
+    """The MCP bridge process. Spawned by agent CLIs (see `--mcp-config`),
+    or by hand for testing; speaks line-delimited JSON-RPC on stdio."""
+    from .tools.mcp_server import main as mcp_serve_main
+
+    argv = ["--root", args.root]
+    if args.allow:
+        argv += ["--allow", args.allow]
+    if args.config:
+        argv += ["--config", args.config]
+    if args.yes:
+        argv += ["--yes"]
+    return mcp_serve_main(argv)
 
 
 async def cmd_mcp(args: argparse.Namespace) -> int:
@@ -435,6 +455,16 @@ def build_parser() -> argparse.ArgumentParser:
     mcp = sub.add_parser("mcp", help="list configured MCP servers")
     mcp.add_argument("--probe", action="store_true",
                      help="connect to each server and list its tools")
+    serve = sub.add_parser(
+        "mcp-serve",
+        help="run the router's builtin-tool MCP bridge on stdio "
+             "(normally spawned by agent CLIs via --mcp-config)",
+    )
+    serve.add_argument("--root", default=".", help="project root to serve")
+    serve.add_argument("--allow", default="",
+                       help="comma-separated tool names to advertise")
+    serve.add_argument("--yes", action="store_true",
+                       help="auto-approve ASK verdicts (explicit trust)")
     hist = sub.add_parser("history", help="recent runs")
     hist.add_argument("-n", "--limit", type=int, default=20)
     plan = sub.add_parser(
@@ -498,8 +528,8 @@ COMMANDS = {
     "doctor": cmd_doctor, "agents": cmd_agents, "usage": cmd_usage,
     "status": cmd_status, "config": cmd_config, "memory": cmd_memory,
     "quota": cmd_quota, "models": cmd_models, "skills": cmd_skills,
-    "tools": cmd_tools, "mcp": cmd_mcp, "history": cmd_history,
-    "plan": cmd_plan, "explain": cmd_explain,
+    "tools": cmd_tools, "mcp": cmd_mcp, "mcp-serve": cmd_mcp_serve,
+    "history": cmd_history, "plan": cmd_plan, "explain": cmd_explain,
 }
 
 

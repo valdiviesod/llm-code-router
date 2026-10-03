@@ -78,9 +78,15 @@ CREATE TABLE IF NOT EXISTS classification_cache (
     fingerprint TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS audit_log (
-    id INTEGER PRIMARY KEY, task_id TEXT, agent_id TEXT, action TEXT NOT NULL,
+    id INTEGER, task_id TEXT, agent_id TEXT, action TEXT NOT NULL,
     decision TEXT, detail TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reservations (
+    id TEXT PRIMARY KEY, pool_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+    tokens INTEGER NOT NULL, task_id TEXT,
+    created_at TEXT NOT NULL, settled INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reservations_pool ON reservations(pool_id, settled);
 """
 
 
@@ -375,6 +381,67 @@ class Database:
             params.append(task_type)
         row = self.conn.execute(sql, params).fetchone()
         return int(int(row["t"]) / int(row["n"])) if int(row["n"]) else None
+
+    def avg_tokens_detail(
+        self, agent_id: str, task_type: str | None = None, complexity: str | None = None,
+    ) -> tuple[int | None, int]:
+        """Average observed total tokens and the sample size behind it.
+
+        The sample size is what the estimator uses to decide whether the
+        number can be trusted or is still a cold-start guess: an average of
+        two runs is noise, an average of fifty is a forecast.
+        """
+        sql = ("SELECT COALESCE(SUM(total_tokens),0) AS t, "
+               "COALESCE(SUM(successes)+SUM(failures),0) AS n "
+               "FROM agent_stats WHERE agent_id=?")
+        params: list[Any] = [agent_id]
+        if task_type:
+            sql += " AND task_type=?"
+            params.append(task_type)
+        if complexity:
+            sql += " AND complexity=?"
+            params.append(complexity)
+        row = self.conn.execute(sql, params).fetchone()
+        n = int(row["n"])
+        return (int(int(row["t"]) / n) if n else None, n)
+
+    def avg_token_split(
+        self, agent_id: str, task_type: str | None = None
+    ) -> tuple[float, float]:
+        """Average (input, output) tokens per recorded run of this agent.
+
+        Used to split an observed *total* into the input/output halves the
+        UsageEstimate shape needs. Returns (0.0, 0.0) with no history.
+        """
+        sql = ("SELECT AVG(r.input_tokens) AS i, AVG(r.output_tokens) AS o "
+               "FROM runs r JOIN tasks t ON t.id = r.task_id "
+               "WHERE r.agent_id=?")
+        params: list[Any] = [agent_id]
+        if task_type:
+            sql += " AND t.task_type=?"
+            params.append(task_type)
+        row = self.conn.execute(sql, params).fetchone()
+        return (float(row["i"] or 0.0), float(row["o"] or 0.0))
+
+    def estimate_correction(self, agent_id: str, max_ratio: float = 100.0) -> float | None:
+        """Running ratio of actual spend to pre-flight estimate, per agent.
+
+        This is the honest bridge between the single-shot heuristic and the
+        agentic reality it models badly: whatever the systematic gap has been
+        on recorded runs (44x on the run that motivated calibration), the
+        heuristic gets multiplied by it instead of being trusted raw. Each
+        per-run ratio is capped at `max_ratio` so one pathological run cannot
+        dominate the mean.
+        """
+        row = self.conn.execute(
+            "SELECT AVG(MIN(?, 1.0*(r.input_tokens+r.output_tokens)/d.estimated_tokens)) "
+            "AS ratio FROM runs r JOIN routing_decisions d ON d.task_id = r.task_id "
+            "WHERE r.agent_id=? AND d.estimated_tokens > 0 "
+            "AND (r.input_tokens + r.output_tokens) > 0",
+            (max_ratio, agent_id),
+        ).fetchone()
+        ratio = row["ratio"]
+        return float(ratio) if ratio is not None else None
 
     def dashboard_metrics(self) -> dict[str, Any]:
         row = self.conn.execute(

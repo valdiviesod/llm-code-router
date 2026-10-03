@@ -9,11 +9,14 @@ the UsageManager derives ESTIMATED windows from those per-run token counts.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import tempfile
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from ...core.models import (
     AgentCapabilities,
@@ -50,6 +53,10 @@ _MODELS = [
 
 @register
 class ClaudeCodeAdapter(AgentAdapter):
+    def __init__(self, config):
+        super().__init__(config)
+        self._mcp_config_paths: list[Path] = []
+
     @property
     def id(self) -> str:
         return "claude"
@@ -154,7 +161,28 @@ class ClaudeCodeAdapter(AgentAdapter):
         if model:
             argv += ["--model", model]
         argv += self.config.extra_args
+        # The MCP bridge: point the CLI at a config whose only server is the
+        # router's own `mcp-serve`, advertising exactly the tools the
+        # selector picked for this run. `tool_bridge: false` disables it.
+        if self.config.tool_bridge and task.selected_tool_ids:
+            argv += ["--mcp-config", str(self._write_mcp_config(task))]
         return argv
+
+    def _write_mcp_config(self, task: Task) -> Path:
+        """One `--mcp-config` file per run, removed after the run.
+
+        The server's `--root` is the task's project root *at execute time*,
+        which for an isolated run is the worktree — the agent's tools see
+        exactly the tree the agent is writing to.
+        """
+        from ...tools.mcp_server import mcp_config_for
+
+        payload = mcp_config_for(task.selected_tool_ids, task.project_root)
+        fd, name = tempfile.mkstemp(prefix="coderouter-mcp-", suffix=".json")
+        with os.fdopen(fd, "w") as fh:
+            json.dump(payload, fh)
+        self._mcp_config_paths.append(Path(name))
+        return Path(name)
 
     async def execute(
         self,
@@ -175,6 +203,11 @@ class ClaudeCodeAdapter(AgentAdapter):
                 task.id, self.id, model, False, "", duration_s=time.monotonic() - started,
                 error=f"timed out after {self.config.timeout_s}s",
             )
+        finally:
+            for path in self._mcp_config_paths:
+                with contextlib.suppress(OSError):
+                    path.unlink(missing_ok=True)
+            self._mcp_config_paths.clear()
         return self.parse_result(task, model, code, out, err, time.monotonic() - started)
 
     # Parsing is a pure function so contract tests can exercise it without a CLI.

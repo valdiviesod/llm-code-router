@@ -24,7 +24,7 @@ from typing import Literal
 from ..core.models import Complexity, UsageInfo, UsageStatus, UsageWindow
 from ..storage.db import Database
 from .manager import UsageManager
-from .reservation import QuotaLedger, Reservation
+from .reservation import QuotaLedger, Reservation, SqliteQuotaLedger
 
 PoolKind = Literal["subscription", "api_key"]
 PoolTier = Literal["premium", "standard", "economy"]
@@ -103,7 +103,7 @@ class QuotaBook:
                 reserve_percent=15.0,
             )
         return cls(pools=list(configured), implicit=implicit, db=db,
-                   ledger=QuotaLedger())
+                   ledger=SqliteQuotaLedger(db))
 
     def pools_for(self, agent_id: str) -> list[QuotaPool]:
         """Every pool that covers this agent, configured first, then implicit.
@@ -242,8 +242,10 @@ class QuotaBook:
         """Atomically check affordability and claim the tokens.
 
         Returns None when no pool can fund the estimate. The check and the
-        hold happen under one lock, so two concurrent callers cannot both be
-        granted the last of a pool's headroom.
+        hold happen under one lock — one `BEGIN IMMEDIATE` transaction with
+        the SQLite ledger — so two concurrent callers, in this process or in
+        another one sharing the database, cannot both be granted the last of
+        a pool's headroom.
 
         A pool with no configured limit is still reserved against, so the
         outstanding total is visible; it just never blocks, because an
@@ -251,14 +253,17 @@ class QuotaBook:
         """
         if self.ledger is None:
             return None
-        with self.ledger.lock:
+
+        def _fundable_pool_only():
             pool, _reason = self._fundable_pool(
                 agent_id, estimate_tokens,
                 complexity=complexity, user_override=user_override,
             )
-            if pool is None:
-                return None
-            return self.ledger._hold_locked(pool.id, agent_id, estimate_tokens, task_id)
+            return pool
+
+        return self.ledger.reserve_atomic(
+            _fundable_pool_only, agent_id, estimate_tokens, task_id,
+        )
 
     def commit(self, res: Reservation, actual_tokens: int) -> None:
         """Settle a reservation with what the run actually spent."""

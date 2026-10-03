@@ -144,11 +144,20 @@ class HealthStatus:
 
 @dataclass(slots=True)
 class UsageEstimate:
-    """What we think a task will cost, before running it."""
+    """What we think a task will cost, before running it.
+
+    `source` is the provenance, reported the same way usage figures carry
+    CONFIRMED/ESTIMATED/UNKNOWN (ADR-005):
+    - "observed": built from enough recorded runs of this agent x task type.
+    - "calibrated": the cold-start heuristic scaled by the observed
+      actual/estimated correction factor.
+    - "heuristic": the raw single-shot heuristic; no history at all.
+    """
 
     input_tokens: int
     output_tokens: int
     confidence: float = 0.5
+    source: str = "heuristic"
 
     @property
     def total_tokens(self) -> int:
@@ -212,6 +221,9 @@ class Task:
     skill_ids: list[str] = field(default_factory=list)
     # Tools the agent may call for this task. Populated by ToolSelector.
     selected_tool_ids: list[str] = field(default_factory=list)
+    #: Pinned model from a model cascade step. Routing picks the default tier;
+    #: this is the override, set by the orchestrator on retry.
+    forced_model: str | None = None
 
 
 @dataclass(slots=True)

@@ -76,6 +76,11 @@ class AgentConfig:
     timeout_s: int = 1800
     mcp_servers: list[MCPServerConfig] = field(default_factory=list)
     tool_budget_tokens: int = 600
+    # Expose the router's builtin tools (read_file/grep/edit_file/run_command)
+    # to this agent through the MCP bridge. Agents with their own MCP support
+    # get a `--mcp-config` pointing at `router mcp-serve`, advertising exactly
+    # the tools the selector picked for the run.
+    tool_bridge: bool = True
 
 
 CLASSIFIER_MODES = ("heuristic", "auto", "llm")
@@ -102,6 +107,11 @@ class RoutingConfig:
     # Speculative dispatch: when on, MEDIUM/LOW tasks race two agents and
     # accept the first success. Off by default. See scheduler/speculative.py.
     speculative: bool = False
+    # Model cascade: when on, a failed attempt may retry at a more expensive
+    # configured tier before reporting failure. Cheapest first, up to
+    # max_attempts steps. Off by default — the existing escalation already
+    # retries on a different agent.
+    cascade: bool = False
 
 
 @dataclass(slots=True)
@@ -179,6 +189,36 @@ class SecurityConfig:
 
 
 @dataclass(slots=True)
+class PermissionsConfig:
+    """allow / deny / ask per capability (see security/permissions.py).
+
+    `rules` is a list of mappings with `capability`, `decision`
+    ("allow"|"deny"|"ask") and an optional regex `pattern` matched against
+    the detail (command string or path). No matching rule means allow; the
+    command policy, the path boundary and the sandbox still apply on top.
+    """
+    rules: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SandboxConfig:
+    """Resource and network boundaries for processes the router spawns.
+
+    `enabled: false` runs commands without rlimits and without the network
+    namespace attempt — the path boundary still applies. `network: false`
+    denies network to sandboxed commands when the kernel allows
+    `unshare(CLONE_NEWNET)`; when it does not, the gap is logged, never
+    silently assumed closed.
+    """
+    enabled: bool = True
+    network: bool = True
+    cpu_seconds: int = 600
+    memory_mb: int = 2048
+    max_processes: int = 128
+    max_file_mb: int = 64
+
+
+@dataclass(slots=True)
 class Config:
     mode: RoutingMode = RoutingMode.AUTO
     agents: dict[str, AgentConfig] = field(default_factory=dict)
@@ -186,6 +226,8 @@ class Config:
     token_saving: TokenSavingConfig = field(default_factory=TokenSavingConfig)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     quota_pools: list[QuotaPoolConfig] = field(default_factory=list)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
@@ -300,6 +342,10 @@ def load_config(path: Path | None = None) -> Config:
             cfg.concurrency = _build(ConcurrencyConfig, value, "concurrency")
         elif key == "security":
             cfg.security = _build(SecurityConfig, value, "security")
+        elif key == "permissions":
+            cfg.permissions = _build(PermissionsConfig, value, "permissions")
+        elif key == "sandbox":
+            cfg.sandbox = _build(SandboxConfig, value, "sandbox")
         elif key == "skills":
             cfg.skills = _build_skills_config(value)
         elif key == "quota_pools":
@@ -363,6 +409,24 @@ token_saving:
 
 concurrency:
   global: 2
+
+# Capability permissions for tools the router itself executes. No rule
+# matching means allow; the command policy and sandbox still apply.
+permissions:
+  rules: []
+  # - capability: git.push
+  #   decision: deny
+  # - capability: shell.execute
+  #   decision: ask
+  #   pattern: "docker .*"
+
+# Resource/network boundaries for processes the router spawns. Network
+# denial needs kernel support and is skipped (with a log line) without it.
+sandbox:
+  enabled: true
+  network: true
+  cpu_seconds: 600
+  memory_mb: 2048
 """
 
 

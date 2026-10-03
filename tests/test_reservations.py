@@ -144,3 +144,126 @@ async def test_orchestrator_releases_the_hold_when_a_run_is_cancelled(
         await run
 
     assert all(ledger.outstanding(p.id) == 0 for p in pools)
+
+
+# --- persistent (cross-process) reservations -------------------------------
+
+
+def _book_on(db, *, limit=100_000) -> QuotaBook:
+    pool = QuotaPool(
+        id="shared", kind="subscription", tier="standard",
+        agent_ids=("fake", "other"), limit_tokens=limit, reserve_percent=0.0,
+    )
+    return QuotaBook.build([pool], ["fake", "other"], db)
+
+
+def test_hold_is_visible_to_a_second_process(config, db):
+    """Two Database connections to one file model two router processes.
+
+    The whole point of the reservations table: process B must see process
+    A's in-flight hold and be refused the same headroom."""
+    from coderouter.storage.db import Database
+
+    db_b = Database(config.db_path)
+    try:
+        book_a = _book_on(db)
+        book_b = _book_on(db_b)
+        first = _reserve(book_a, "fake", 70_000)
+        assert first is not None
+        assert _reserve(book_b, "other", 50_000) is None, "B must see A's hold"
+        assert _reserve(book_b, "other", 10_000) is not None
+    finally:
+        db_b.close()
+
+
+def test_commit_by_one_process_frees_headroom_for_the_other(config, db):
+    from coderouter.storage.db import Database
+
+    db_b = Database(config.db_path)
+    try:
+        book_a = _book_on(db)
+        book_b = _book_on(db_b)
+        held = _reserve(book_a, "fake", 70_000)
+        assert held is not None
+        assert _reserve(book_b, "other", 50_000) is None
+        book_a.commit(held, actual_tokens=42_000)
+        assert _reserve(book_b, "other", 50_000) is not None
+    finally:
+        db_b.close()
+
+
+def test_release_is_idempotent_across_processes(config, db):
+    from coderouter.storage.db import Database
+
+    db_b = Database(config.db_path)
+    try:
+        book_a = _book_on(db)
+        book_b = _book_on(db_b)
+        held = _reserve(book_a, "fake", 70_000)
+        assert held is not None
+        book_b.release(held)  # B settles A's hold (the reaper's job, by hand)
+        book_a.release(held)  # a double release must not free twice
+        assert _reserve(book_b, "other", 50_000) is not None
+        assert _reserve(book_b, "other", 40_000) is None
+    finally:
+        db_b.close()
+
+
+def test_stale_holds_are_reaped(db):
+    """A killed process cannot release its own hold; a hold older than the
+    stale window is dead by definition and must free its headroom."""
+    from datetime import UTC, datetime, timedelta
+
+    book = _book_on(db)
+    ledger = book.ledger
+    assert ledger is not None
+    # A hold taken far in the past, directly in the table.
+    old = datetime.now(UTC) - timedelta(hours=48)
+    db.conn.execute(
+        "INSERT INTO reservations (id, pool_id, agent_id, tokens, created_at, settled) "
+        "VALUES ('resv_old', 'shared', 'fake', 90000, ?, 0)",
+        (old.isoformat(),),
+    )
+    db.conn.commit()
+    assert ledger.outstanding("shared") == 0, "the stale hold must be reaped"
+    # And the headroom it falsely claimed is available again.
+    assert _reserve(book, "other", 50_000) is not None
+
+
+def test_reaper_leaves_fresh_holds_alone(db):
+    from datetime import UTC, datetime, timedelta
+
+    book = _book_on(db)
+    held = _reserve(book, "fake", 70_000)
+    assert held is not None
+    fresh = datetime.now(UTC) - timedelta(minutes=5)
+    db.conn.execute(
+        "UPDATE reservations SET created_at=? WHERE id=?", (fresh.isoformat(), held.id)
+    )
+    db.conn.commit()
+    ledger = book.ledger
+    assert ledger is not None
+    assert ledger.outstanding("shared") == 70_000
+
+
+def test_two_books_on_one_db_grant_at_most_the_usable_share(config, db):
+    """Interleaved check-then-hold across two connections cannot overspend,
+    because reserve() is one BEGIN IMMEDIATE transaction per grant."""
+    from coderouter.storage.db import Database
+
+    db_b = Database(config.db_path)
+    try:
+        book_a = _book_on(db)
+        book_b = _book_on(db)
+        granted = 0
+        # A and B alternate, each trying to take 30k of the 85k usable share:
+        # two grants fit (60k), the third (90k) must be refused by both books.
+        for book, agent in [(book_a, "fake"), (book_b, "other")] * 3:
+            if _reserve(book, agent, 30_000) is not None:
+                granted += 30_000
+        assert granted == 60_000, "85k usable: two grants, the third refused"
+        ledger = book_a.ledger
+        assert ledger is not None
+        assert ledger.outstanding("shared") == 60_000
+    finally:
+        db_b.close()

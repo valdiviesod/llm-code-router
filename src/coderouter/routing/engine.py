@@ -10,7 +10,7 @@ A future ML ranker plugs in by implementing score_candidates(); everything else
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import monotonic
 
 from ..agents.base.adapter import AgentAdapter
@@ -27,6 +27,7 @@ from ..core.models import (
 )
 from ..errors import NoViableAgent
 from ..storage.db import Database
+from ..usage.estimator import TokenEstimator
 from ..usage.manager import UsageManager
 from ..usage.quota_pool import QuotaBook
 
@@ -68,6 +69,12 @@ class RoutingEngine:
     quota_book: QuotaBook | None = None
     #: agent_id -> (checked_at_monotonic, healthy, detail)
     _health: dict[str, tuple[float, bool, str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        #: Calibrated estimation: observed history first, corrected heuristic
+        #: as the cold-start prior. Every quota decision in this engine rests
+        #: on it instead of the raw single-shot heuristic.
+        self.estimator = TokenEstimator(self.db)
 
     async def health_of(self, adapter: AgentAdapter) -> tuple[bool, str]:
         """Cached health probe.
@@ -167,7 +174,7 @@ class RoutingEngine:
                                  task.required_capabilities - adapter.capabilities.capabilities)
                 rejected.append((adapter.id, f"lacks required capability: {', '.join(missing)}"))
                 continue
-            estimate = await adapter.estimate(task)
+            estimate = await self.estimator.estimate(adapter, task)
             fits, fits_why = self._context_fits(adapter, estimate)
             if not fits:
                 rejected.append((adapter.id, fits_why))
@@ -230,7 +237,9 @@ class RoutingEngine:
             best, rest = ranked[0], ranked[1:]
             if best.score == 0.0:
                 raise NoViableAgent("every agent is over its configured quota threshold")
-
+        # A cascade step pins a specific model; honour it.
+        if task.forced_model and best.agent_id in [c.agent_id for c in candidates]:
+            best = replace(best, model=task.forced_model)
         spread = best.score - (rest[0].score if rest else 0.0)
         confidence = min(0.5 + spread * 2, 0.99)
         reason = f"mode={mode.value}; " + "; ".join(best.reasons[:3])
@@ -270,6 +279,32 @@ class RoutingEngine:
             if ordered:
                 return tiers[ordered[-1].value]
         return tiers.get(task.complexity.value, cfg.default_model)
+
+    def _cascade_for(self, adapter: AgentAdapter, task: Task) -> list[str]:
+        """Ordered list of distinct model ids to try, cheapest first.
+
+        The cascade starts at the tier the complexity alone justifies and
+        may climb to a more expensive one when:
+        - the cheaper attempt failed and a higher attempt is allowed, or
+        - the quota pool is too pressured to safely afford a retry at the
+          top tier.
+        Duplicate consecutive models collapse — a config that pins the
+        same model to two consecutive tiers is one step, not two. The
+        cascade is capped at `routing.max_attempts` distinct models.
+        """
+        cfg = self.config.agent(adapter.id)
+        if not cfg.model_tiers or not adapter.capabilities.has(Capability.MODEL_SELECTION):
+            return [cfg.default_model] if cfg.default_model else []
+        ordered = [c for c in Complexity if c.value in cfg.model_tiers]
+        start = max((i for i, c in enumerate(ordered) if c is task.complexity), default=0)
+        models: list[str] = []
+        for i in range(start, len(ordered)):
+            model = cfg.model_tiers[ordered[i].value]
+            if not models or models[-1] != model:
+                models.append(model)
+            if len(models) >= max(1, self.config.routing.max_attempts):
+                break
+        return models
 
     def _select_pool_id(self, agent_id: str, task: Task) -> str | None:
         """Pick the pool id that funded this candidate.

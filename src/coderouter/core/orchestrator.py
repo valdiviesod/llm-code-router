@@ -46,6 +46,10 @@ logger = get_logger("orchestrator")
 
 Event = Callable[[str, dict], Awaitable[None]]
 
+#: Marks the selected-tools block injected into the prompt. Present in the
+#: prompt already => the block was injected once and must not be duplicated.
+TOOLS_BLOCK_MARK = "[coderouter tools]"
+
 
 @dataclass(slots=True)
 class TaskOutcome:
@@ -331,10 +335,12 @@ class Orchestrator:
         """Pick a budgeted set of tools for this task and adapter.
 
         Discovers MCP server tools first (best-effort), then runs the
-        selector. The chosen tool ids are recorded on the task; the
-        full tool list is not persisted at this point because the
-        adapter is what actually decides which tools to advertise in
-        its prompt — the router's job is just to keep the picker honest.
+        selector. The chosen tool ids are recorded on the task and injected
+        into the prompt, and the MCP bridge advertises exactly that subset
+        for the run — the selector's budget is enforced at call time, not
+        merely logged. Adapters with their own MCP support (claude) are
+        pointed at the bridge via `--mcp-config`; the ones without it still
+        see the injected block.
         """
         agent_cfg = self.config.agent(adapter.id)
         for server_cfg in agent_cfg.mcp_servers:
@@ -358,8 +364,26 @@ class Orchestrator:
         )
         task.selected_tool_ids = [t.name for t in chosen]
         if chosen:
+            self._inject_tools(task, chosen)
             log(logger, logging.INFO, "tools selected", task_id=task.id,
                 agent_id=adapter.id, tools=",".join(t.name for t in chosen))
+
+    def _inject_tools(self, task: Task, chosen: list) -> None:
+        """Append the selected-tool block to the prompt.
+
+        Every agent sees this block, MCP-capable or not: it states what the
+        router's bridge offers for this run. Idempotent — an escalation
+        retry carries the same prompt and must not grow a second block.
+        """
+        if TOOLS_BLOCK_MARK in task.prompt:
+            return
+        lines = [f"{TOOLS_BLOCK_MARK}"]
+        lines.append("The router exposes these tools for this task via the "
+                     "coderouter MCP server:")
+        for tool in chosen:
+            summary = tool.description.split(". ")[0]
+            lines.append(f"- {tool.name}: {summary}")
+        task.prompt = task.prompt + "\n\n" + "\n".join(lines)
 
     async def _self_heal(
         self, task: Task, outcome: TaskOutcome, *,
@@ -367,14 +391,41 @@ class Orchestrator:
         isolate: bool = False,
         on_event: Event | None,
     ) -> TaskOutcome | None:
-        """One escalation attempt on a different agent, carrying a compact
-        failure report. Never re-sends the identical prompt.
+        """One escalation attempt, carrying a compact failure report.
 
-        `isolate` is carried over deliberately: an escalation of an isolated
-        run that wrote straight into the project tree would put two agents in
-        one working tree, which is exactly what ADR-004 forbids."""
+        Two paths, in this order:
+        1. **Model cascade** (when enabled): if the failed agent has more
+           expensive configured tiers, retry on the same agent with the
+           next model. The cascade never changes agents, so it composes
+           cleanly with isolation and the budget.
+        2. **Agent swap**: a different agent takes the task, with the
+           failure report as handoff. `isolate` is carried over deliberately:
+           an escalation of an isolated run that wrote straight into the
+           project tree would put two agents in one working tree, which is
+           what ADR-004 forbids.
+        """
         if task.attempt + 1 >= self.config.routing.max_attempts:
             return None
+
+        # --- cascade: try the next tier on the same agent first ---------
+        if (self.config.routing.cascade and outcome.decision
+                and outcome.decision.selected_model):
+            adapter = self.registry.get(outcome.decision.selected_agent)
+            if adapter is not None:
+                cascade = self.router._cascade_for(adapter, task)
+                tried = set([outcome.decision.selected_model])
+                next_model = next((m for m in cascade if m not in tried), None)
+                if next_model is not None:
+                    log(logger, logging.WARNING, "cascading to next model",
+                        task_id=task.id, agent_id=adapter.id, to_model=next_model)
+                    self.db.audit("cascade", task_id=task.id, agent_id=adapter.id,
+                                  detail=f"to_model={next_model}")
+                    return await self._retry_with_model(
+                        task, outcome, next_model,
+                        mode_override=mode_override, isolate=isolate, on_event=on_event,
+                    )
+
+        # --- agent swap: a different agent takes it ---------------------
         others = [a for a in self.registry.available()
                   if outcome.decision and a.id != outcome.decision.selected_agent]
         if not others:
@@ -399,6 +450,36 @@ class Orchestrator:
             task_id=task.id, to_agent=others[0].id)
         self.db.audit("escalate", task_id=task.id, agent_id=others[0].id,
                       detail="previous attempt failed")
+        return await self.run_task(retry, mode_override=mode_override,
+                                   isolate=isolate, on_event=on_event)
+
+    async def _retry_with_model(
+        self, task: Task, outcome: TaskOutcome, model: str, *,
+        mode_override: RoutingMode | None = None,
+        isolate: bool = False, on_event: Event | None,
+    ) -> TaskOutcome:
+        """Retry the same task on the same agent, pinning the cascade's model.
+
+        The retry carries the previous handoff so the next attempt has the
+        failure report, and the attempt counter advances so a third retry
+        through `_self_heal` (e.g. another cascade step) is not blocked.
+        """
+        retry = Task(
+            prompt=task.prompt,
+            parent_id=task.id,
+            project_root=task.project_root,
+            task_type=task.task_type,
+            complexity=task.complexity,
+            risk=task.risk,
+            required_capabilities=task.required_capabilities,
+            context_files=task.context_files,
+            forced_agent=outcome.decision.selected_agent if outcome.decision else None,
+            forced_model=model,
+            handoff=outcome.handoff,
+            attempt=task.attempt + 1,
+            classification_source=task.classification_source,
+            classification_confidence=task.classification_confidence,
+        )
         return await self.run_task(retry, mode_override=mode_override,
                                    isolate=isolate, on_event=on_event)
 
